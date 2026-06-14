@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LearnFlow — 情境學習</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <div class="app-shell" id="appShell">
+      <div class="sidebar-shell">
+        <aside class="sidebar" id="sidebar" aria-label="主要導覽">
+          <div class="sidebar-top">
+            <a class="brand" href="/" aria-label="LearnFlow 首頁">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <span class="brand-text">LearnFlow</span>
+            </a>
+          </div>
+
+          <nav class="nav-list" id="navList" aria-label="功能選單"></nav>
+
+          <section class="upgrade-card">
+            <div class="upgrade-card-icon" aria-hidden="true">
+              <i data-lucide="sparkles"></i>
+            </div>
+            <p class="eyebrow">升級到 Pro</p>
+            <h2>解鎖更多功能，學習更有效率！</h2>
+            <button type="button" class="dark-button upgrade-btn" disabled>升級方案</button>
+          </section>
+        </aside>
+
+        <button
+          type="button"
+          class="sidebar-collapse-btn"
+          id="sidebarCollapseBtn"
+          aria-label="收合側邊欄"
+          aria-expanded="true"
+        >
+          <i data-lucide="panel-left-close"></i>
+        </button>
+      </div>
+
+      <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+
+      <main class="main-area">
+        <header class="topbar">
+          <div class="topbar-leading">
+            <button
+              type="button"
+              class="sidebar-toggle-btn"
+              id="sidebarToggleBtn"
+              aria-label="開啟側邊選單"
+              aria-expanded="false"
+            >
+              <i data-lucide="menu"></i>
+            </button>
+            <label class="search-box" for="searchInput">
+              <i data-lucide="search"></i>
+              <input
+                id="searchInput"
+                type="search"
+                placeholder="搜尋課程 / 單字 / 句子"
+                autocomplete="off"
+                disabled
+              />
+            </label>
+          </div>
+          <div class="top-actions">
+            <button type="button" class="icon-button" aria-label="通知" disabled>
+              <i data-lucide="bell"></i>
+            </button>
+            <span id="apiStatus" class="tag api-tag">API</span>
+            <button type="button" class="profile-chip" aria-label="使用者選單" disabled>
+              <span class="avatar">A</span>
+              <span class="profile-name">Alex</span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+          </div>
+        </header>
+
+        <section id="viewRoot" class="view-root" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <nav class="mobile-tabbar" id="mobileTabbar" aria-label="行動版導覽"></nav>
+
+    <div id="toastStack" class="toast-stack" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="/js/app.js"></script>
+    <script>
+      if (window.lucide) lucide.createIcons();
+    </script>
+  </body>
+</html>

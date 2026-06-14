@@ -1,0 +1,58 @@
+# ============================================================
+# EC2 正式環境 — 從 Docker Hub pull，不在 EC2 上 build
+# 使用：docker compose -f docker-compose.prod.yml up -d
+# ============================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: learnflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-learnflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-learnflow}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-learnflow} -d ${POSTGRES_DB:-learnflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    image: ${DOCKERHUB_USER}/learnflow-backend:${IMAGE_TAG:-latest}
+    container_name: learnflow-backend
+    restart: unless-stopped
+    pull_policy: always
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-learnflow}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-1}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-5}
+    expose:
+      - "8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: ${DOCKERHUB_USER}/learnflow-nginx:${IMAGE_TAG:-latest}
+    container_name: learnflow-nginx
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      # 語音檔不打包進 image，EC2 上用 scp 放到 ./data/audio/
+      - ./data/audio:/usr/share/nginx/html/audio:ro
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+    name: learnflow-postgres-data
