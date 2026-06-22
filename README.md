@@ -7,7 +7,9 @@
 - [`spec/document/PRODUCT_SPEC.md`](spec/document/PRODUCT_SPEC.md)
 - [`spec/document/api.md`](spec/document/api.md)
 - [`spec/document/database_spec.md`](spec/document/database_spec.md)
-- [`spec/operate/SQL.md`](spec/operate/SQL.md) — 情境內容建表與種子資料
+- [`spec/database/schema.sql`](spec/database/schema.sql) — 資料表與索引（純 DDL）
+- [`spec/operate/scenario_seed.sql`](spec/operate/scenario_seed.sql) — 建表 + 種子資料
+- [`spec/operate/SQL.md`](spec/operate/SQL.md) — 種子資料維護與產生器
 
 ## 專案結構
 
@@ -28,8 +30,71 @@ LearnFlow/
 │   ├── docker-compose.yml # PostgreSQL + Backend + Nginx
 │   ├── Dockerfile
 │   └── nginx/
-└── spec/                  # 規格與 SQL 操作文件
+├── spec/
+│   ├── database/          # schema.sql（純 DDL）
+│   └── operate/           # scenario_seed.sql（DDL + 種子）
 ```
+
+---
+
+## 資料庫建表與種子資料
+
+### SQL 檔案
+
+| 檔案 | 用途 |
+|------|------|
+| [`spec/database/schema.sql`](spec/database/schema.sql) | 純 DDL：ENUM、資料表、索引 |
+| [`spec/operate/scenario_seed.sql`](spec/operate/scenario_seed.sql) | DDL + 種子資料（會 DROP 重建內容表） |
+| [`spec/document/database_spec.md`](spec/document/database_spec.md) | 完整產品規格（含尚未實作的 users、進度等表） |
+
+目前實作範圍：
+
+```text
+scenarios
+  └── courses
+        ├── course_sentences
+        └── course_vocabulary
+```
+
+### 只看結構
+
+```bash
+cat spec/database/schema.sql
+```
+
+### 全新資料庫（建表 + 匯入種子）
+
+先確認 PostgreSQL 已啟動，並設定連線字串（與專案根目錄 `.env` 的 `DATABASE_URL` 相同）：
+
+```bash
+export DATABASE_URL=postgresql://learnflow:learnflow_dev@127.0.0.1:5433/learnflow
+
+psql "$DATABASE_URL" -f spec/database/schema.sql
+psql "$DATABASE_URL" -f spec/operate/scenario_seed.sql
+```
+
+> `scenario_seed.sql` 內含相同 DDL。若只需匯入資料，**只跑第二行**即可。
+
+### 使用 Docker 容器執行（venv / Compose 皆適用）
+
+PostgreSQL 容器名為 `learnflow-db` 時：
+
+```bash
+docker exec -i learnflow-db psql -U learnflow -d learnflow < spec/database/schema.sql
+docker exec -i learnflow-db psql -U learnflow -d learnflow < spec/operate/scenario_seed.sql
+```
+
+### 只更新種子資料
+
+```bash
+# 1. 改 spec/operate/seed_content.py
+# 2. 重新產生 SQL
+python spec/operate/generate_scenario_seed.py
+# 3. 匯入（會 DROP 重建四張內容表）
+psql "$DATABASE_URL" -f spec/operate/scenario_seed.sql
+```
+
+詳細操作與資料規模見 [`spec/operate/SQL.md`](spec/operate/SQL.md)。
 
 ---
 
@@ -50,31 +115,31 @@ pip install -r backend/requirements.txt
 
 ```bash
 cd deploy
-cp .env.example .env             # 首次使用
-docker-compose up -d postgres
+docker compose -f docker-compose.yml --env-file ../.env up -d postgres
 ```
+
+（若尚未建立根目錄 `.env`，見下方「環境變數」一節。）
 
 ### 3. 寫入情境資料
 
-依 [`spec/operate/SQL.md`](spec/operate/SQL.md) 執行建表與種子 SQL。
-
-在**終端機**（任意目錄皆可）進入 PostgreSQL 容器：
+依上方「[資料庫建表與種子資料](#資料庫建表與種子資料)」執行。venv 開發時常用：
 
 ```bash
-docker exec -it learnflow-db psql -U learnflow -d learnflow
+export DATABASE_URL=postgresql://learnflow:learnflow_dev@127.0.0.1:5433/learnflow
+psql "$DATABASE_URL" -f spec/database/schema.sql
+psql "$DATABASE_URL" -f spec/operate/scenario_seed.sql
 ```
-
-看到 `learnflow=#` 提示符後，依序貼上 SQL.md 的建表與 INSERT 語句。完成後輸入 `\q` 離開。
 
 ### 4. 設定環境變數
 
-在 `app/.env` 建立：
+在**專案根目錄**（`LearnFlow/`）建立 `.env`：
 
-```env
-DATABASE_URL=postgresql://learnflow:learnflow_dev@127.0.0.1:5433/learnflow
-DB_POOL_MIN_SIZE=1
-DB_POOL_MAX_SIZE=5
+```bash
+cp .env.example .env
+# 編輯 .env，填入 SECRET_KEY、GOOGLE_CLIENT_ID 等
 ```
+
+`.env` 同時供 **venv 本地開發** 與 **Docker Compose** 使用。
 
 ### 5. 啟動後端
 
@@ -117,8 +182,8 @@ Swagger UI：<http://127.0.0.1:8002/docs>
 
 | 狀況 | 處理方式 |
 |------|----------|
-| API 回傳 503 | 確認 `app/.env` 有設定 `DATABASE_URL`，且 PostgreSQL 已啟動 |
-| 情境列表為空 | 確認已執行 `spec/operate/SQL.md` 的種子資料 |
+| API 回傳 503 | 確認專案根目錄 `.env` 有設定 `DATABASE_URL`，且 PostgreSQL 已啟動 |
+| 情境列表為空 | 確認已執行 `spec/operate/scenario_seed.sql` |
 | `asyncpg` 找不到 | 確認 venv 已 activate 並重新 `pip install -r backend/requirements.txt` |
 
 ---
@@ -136,26 +201,20 @@ Swagger UI：<http://127.0.0.1:8002/docs>
 
 ### 1. 設定環境變數
 
+在**專案根目錄**建立 `.env`（若 venv 開發時已建可沿用）：
+
 ```bash
-cd deploy
 cp .env.example .env
 ```
 
-`.env` 預設內容：
-
-```env
-POSTGRES_USER=learnflow
-POSTGRES_PASSWORD=learnflow_dev
-POSTGRES_DB=learnflow
-POSTGRES_PORT=5432
-NGINX_PORT=80
-```
+`.env` 預設含 PostgreSQL、Auth、Nginx port 等設定。
 
 ### 2. 啟動所有服務
 
+在**專案根目錄**執行：
+
 ```bash
-cd deploy
-docker compose up -d --build
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
 ```
 
 確認容器狀態：
@@ -168,13 +227,14 @@ docker compose ps
 
 ### 3. 寫入情境資料
 
-PostgreSQL 啟動後，在**終端機**進入容器執行 SQL（只需做一次）：
+PostgreSQL 啟動後（只需做一次），在專案根目錄執行：
 
 ```bash
-docker exec -it learnflow-db psql -U learnflow -d learnflow
+docker exec -i learnflow-db psql -U learnflow -d learnflow < spec/database/schema.sql
+docker exec -i learnflow-db psql -U learnflow -d learnflow < spec/operate/scenario_seed.sql
 ```
 
-依 [`spec/operate/SQL.md`](spec/operate/SQL.md) 貼上建表與種子 SQL，完成後 `\q` 離開。
+亦可參考上方「[資料庫建表與種子資料](#資料庫建表與種子資料)」。
 
 ### 4. 存取服務
 
@@ -216,7 +276,7 @@ docker compose up -d --build backend
 | 狀況 | 處理方式 |
 |------|----------|
 | 前端可開但 API 502 | `docker compose logs backend` 確認後端是否正常連 DB |
-| port 80 被佔用 | 修改 `.env` 的 `NGINX_PORT=8080`，改開 <http://localhost:8080> |
+| port 80 被佔用 | 修改根目錄 `.env` 的 `NGINX_PORT=8080`，改開 <http://localhost:8080> |
 | 修改後端程式碼 | 執行 `docker compose up -d --build backend` 重建映像 |
 | 修改前端靜態檔 | Nginx 已掛載 `app/frontend/`，存檔後重新整理瀏覽器即可 |
 
@@ -291,7 +351,7 @@ docker cp ~/learnflow.dump learnflow-db:/tmp/learnflow.dump
 docker exec learnflow-db pg_restore -U learnflow -d learnflow --clean --if-exists /tmp/learnflow.dump
 ```
 
-若 EC2 是全新環境，也可在容器內重跑 [`spec/operate/SQL.md`](spec/operate/SQL.md)。
+若 EC2 是全新環境，也可在容器內重跑 `spec/operate/scenario_seed.sql`（見「[資料庫建表與種子資料](#資料庫建表與種子資料)」）。
 
 ### EC2 快速步驟
 

@@ -40,3 +40,14 @@ class Database:
 
 
 database = Database()
+
+
+async def get_db():
+    """
+    FastAPI Depends 注入用函式。
+    每次請求從 Pool 取出一條連線，請求結束後自動歸還。
+    """
+    if not database.pool:
+        raise RuntimeError("Database pool is not initialized. Check DATABASE_URL.")
+    async with database.pool.acquire() as connection:
+        yield connection

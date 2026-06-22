@@ -6,17 +6,88 @@
 -- 規格：每課 15 句真實對話 + 30 個從對話萃取的關鍵單字。
 --
 -- 注意：本檔開頭會 DROP 並重建 scenarios / courses / course_sentences / course_vocabulary，
---       執行後舊資料會全部清除再重新載入。
+--       執行後舊情境資料會全部清除再重新載入。
+--       users / refresh_tokens / user_profiles 不在 DROP 範圍，使用者資料會保留。
 -- ============================================================
 
 DROP TABLE IF EXISTS course_vocabulary, course_sentences, courses, scenarios CASCADE;
-DROP TYPE IF EXISTS language_code CASCADE;
-DROP TYPE IF EXISTS level_code CASCADE;
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TYPE language_code AS ENUM ('english', 'japanese');
-CREATE TYPE level_code AS ENUM ('beginner', 'intermediate', 'advanced');
+DO $$ BEGIN
+    CREATE TYPE language_code AS ENUM ('english', 'japanese');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE level_code AS ENUM ('beginner', 'intermediate', 'advanced');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- ------------------------------------------------------------
+-- 會員系統（Google SSO only）— 對齊 Stock-Insight-Chat auth 表
+-- 不在下方 DROP 範圍；重跑種子只重建情境內容表
+-- 後端流程：GET /auth/google/start → callback → refresh_tokens Cookie → POST /auth/refresh
+-- ------------------------------------------------------------
+
+DO $$ BEGIN
+    CREATE TYPE subscription_tier AS ENUM ('free', 'pro');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE user_status AS ENUM ('active', 'disabled', 'pending');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS users (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email               VARCHAR(255) NOT NULL,
+    username            VARCHAR(100) NOT NULL,
+    google_sub          TEXT         NOT NULL,
+    display_name        VARCHAR(100),
+    avatar_url          TEXT,
+    last_login_provider VARCHAR(32)  NOT NULL DEFAULT 'google',
+    status              user_status  NOT NULL DEFAULT 'active',
+    subscription_tier   subscription_tier NOT NULL DEFAULT 'free',
+    last_login_at       TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    deleted_at          TIMESTAMPTZ,
+    CONSTRAINT users_email_unique UNIQUE (email),
+    CONSTRAINT users_username_unique UNIQUE (username),
+    CONSTRAINT users_google_sub_unique UNIQUE (google_sub)
+);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token      TEXT        NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT refresh_tokens_token_unique UNIQUE (token)
+);
+
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id                UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    native_language        VARCHAR(10)     NOT NULL DEFAULT 'zh-TW',
+    active_languages       language_code[] NOT NULL DEFAULT '{}',
+    level                  level_code      NOT NULL DEFAULT 'beginner',
+    interests              TEXT[]          NOT NULL DEFAULT '{}',
+    daily_goal_minutes     SMALLINT        NOT NULL DEFAULT 30,
+    speech_speed           DECIMAL(3,2)    NOT NULL DEFAULT 1.00,
+    ai_feedback_strictness VARCHAR(20)     NOT NULL DEFAULT 'normal',
+    ui_language            VARCHAR(10)     NOT NULL DEFAULT 'zh-TW',
+    timezone               VARCHAR(50)     NOT NULL DEFAULT 'Asia/Taipei',
+    updated_at             TIMESTAMPTZ     NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_active
+    ON users (email) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_google_sub ON users (google_sub);
+CREATE INDEX IF NOT EXISTS idx_users_created_at ON users (created_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens (user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens (expires_at);
 
 CREATE TABLE scenarios (
     id            VARCHAR(50)  PRIMARY KEY,

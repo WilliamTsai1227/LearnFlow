@@ -103,6 +103,12 @@ const homeMock = {
   },
 };
 
+function getDisplayName() {
+  const user = typeof getUser === "function" ? getUser() : null;
+  if (!user) return homeMock.userName;
+  return user.display_name || user.username || user.email || homeMock.userName;
+}
+
 const appShell = document.querySelector("#appShell");
 const sidebar = document.querySelector("#sidebar");
 const sidebarCollapseBtn = document.querySelector("#sidebarCollapseBtn");
@@ -561,7 +567,7 @@ function renderHome() {
   const dashboard = el("div", "home-dashboard");
 
   const greeting = el("header", "home-greeting");
-  greeting.appendChild(el("h1", null, `早安，${homeMock.userName}`));
+  greeting.appendChild(el("h1", null, `早安，${getDisplayName()}`));
   greeting.appendChild(el("p", null, "今天也一起累積一點進步。"));
   dashboard.appendChild(greeting);
 
@@ -1089,4 +1095,6 @@ async function init() {
   render();
 }
 
-init();
+window.addEventListener("learnflow:auth-ready", () => {
+  init();
+});
