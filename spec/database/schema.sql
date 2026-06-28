@@ -8,7 +8,9 @@
 --
 -- 關聯：
 --   users 1 ── * refresh_tokens
---         └── 1 user_profiles
+--         ├── 1 user_profiles
+--         ├── * user_saved_vocabulary  → course_vocabulary.id (FK)
+--         └── * user_saved_sentences   → course_sentences.id (FK)
 --   scenarios 1 ── * courses 1 ── * course_sentences
 --                              └── * course_vocabulary
 --
@@ -173,3 +175,41 @@ CREATE TABLE course_vocabulary (
 
 CREATE INDEX idx_vocabulary_course
     ON course_vocabulary (course_id, order_index);
+
+-- ------------------------------------------------------------
+-- user_saved_vocabulary — 使用者收藏單字
+-- API：POST/DELETE /vocabulary/{vocab_id}/favorite、GET /saved?type=vocabulary
+-- ------------------------------------------------------------
+
+CREATE TABLE user_saved_vocabulary (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vocabulary_id  VARCHAR(50) NOT NULL REFERENCES course_vocabulary(id) ON DELETE CASCADE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT user_saved_vocabulary_unique UNIQUE (user_id, vocabulary_id)
+);
+
+CREATE INDEX idx_user_saved_vocabulary_user
+    ON user_saved_vocabulary (user_id, created_at DESC);
+
+CREATE INDEX idx_user_saved_vocabulary_vocab
+    ON user_saved_vocabulary (vocabulary_id);
+
+-- ------------------------------------------------------------
+-- user_saved_sentences — 使用者收藏句子
+-- API：GET /saved?type=sentence、POST /saved { item_type: "sentence", ... }
+-- ------------------------------------------------------------
+
+CREATE TABLE user_saved_sentences (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    sentence_id VARCHAR(50) NOT NULL REFERENCES course_sentences(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT user_saved_sentences_unique UNIQUE (user_id, sentence_id)
+);
+
+CREATE INDEX idx_user_saved_sentences_user
+    ON user_saved_sentences (user_id, created_at DESC);
+
+CREATE INDEX idx_user_saved_sentences_sentence
+    ON user_saved_sentences (sentence_id);

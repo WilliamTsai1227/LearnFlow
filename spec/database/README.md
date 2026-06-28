@@ -25,11 +25,13 @@
 
 ---
 
-## 目前實作範圍（7 張表）
+## 目前實作範圍（9 張表）
 
 ```text
 users 1 ── * refresh_tokens
-      └── 1 user_profiles
+      ├── 1 user_profiles
+      ├── * user_saved_vocabulary  → course_vocabulary.id
+      └── * user_saved_sentences   → course_sentences.id
 
 scenarios 1 ── * courses 1 ── * course_sentences
                               └── * course_vocabulary
@@ -76,6 +78,17 @@ scenarios 1 ── * courses 1 ── * course_sentences
 - `GET /api/scenarios/{id}`
 - `GET /api/scenarios/{id}/courses/{course_id}`
 
+### 收藏（表已建；API 待實作）
+
+| 表 | 說明 | 對應內容 |
+|----|------|----------|
+| `user_saved_vocabulary` | 使用者收藏單字 | `course_vocabulary.id`（FK, ON DELETE CASCADE） |
+| `user_saved_sentences` | 使用者收藏句子 | `course_sentences.id`（FK, ON DELETE CASCADE） |
+
+> 重跑 `scenario_seed.sql` 會 DROP 內容表，收藏列會一併清除；`users` 等會員資料仍保留。
+
+規格 API 見 [`api.md`](../document/api.md) §9.3–9.4、§12。
+
 ---
 
 ## 建議執行順序
@@ -116,7 +129,7 @@ python spec/operate/generate_scenario_seed.py
 psql "$DATABASE_URL" -f spec/operate/scenario_seed.sql
 ```
 
-> `scenario_seed.sql` **不會** DROP `users` / `refresh_tokens` / `user_profiles`，重跑種子不會清掉已登入使用者。
+> `scenario_seed.sql` **不會** DROP `users` / `refresh_tokens` / `user_profiles`，重跑種子不會清掉已登入使用者；**會** DROP 收藏表與內容表（收藏需重新建立）。
 
 ---
 

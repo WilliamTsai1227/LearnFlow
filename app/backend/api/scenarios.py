@@ -30,7 +30,30 @@ def _require_connection():
 @router.get("/health")
 async def health() -> dict:
     db_status = "connected" if database.pool else "not_configured"
-    return {"status": "ok", "service": "learnflow", "database": db_status}
+    saved_status = "not_checked"
+
+    if database.pool:
+        async with database.acquire() as conn:
+            if conn is not None:
+                tables_ok = await conn.fetchval(
+                    """
+                    SELECT COUNT(*) = 2
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_name IN (
+                          'user_saved_vocabulary',
+                          'user_saved_sentences'
+                      )
+                    """
+                )
+                saved_status = "ready" if tables_ok else "tables_missing"
+
+    return {
+        "status": "ok",
+        "service": "learnflow",
+        "database": db_status,
+        "saved": saved_status,
+    }
 
 
 @router.get("/scenarios", response_model=list[ScenarioSummary])

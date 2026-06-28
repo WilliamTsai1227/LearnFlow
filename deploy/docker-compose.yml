@@ -29,19 +29,17 @@ services:
       dockerfile: ../deploy/Dockerfile
     container_name: learnflow-backend
     restart: unless-stopped
+    volumes:
+      - ../app/backend:/app/backend:ro
     env_file:
       - ../.env
     environment:
+      # DATABASE_URL 需指向 compose 內 postgres 服務名，不可直接用 ../.env 的 127.0.0.1
       DATABASE_URL: postgresql://${POSTGRES_USER:-learnflow}:${POSTGRES_PASSWORD:-learnflow_dev}@postgres:5432/${POSTGRES_DB:-learnflow}
       DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-1}
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-5}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-http://localhost/api/user/auth/google/callback}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:80}
+      # Google OAuth / SECRET_KEY / FRONTEND_URL 等請只放在 ../.env（env_file）
+      # 勿在此用 ${GOOGLE_CLIENT_ID:-} 覆写，否則 deploy/ 無 .env 時會變成空字串
     expose:
       - "8002"
     depends_on:

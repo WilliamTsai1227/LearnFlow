@@ -8,8 +8,10 @@
 -- 注意：本檔開頭會 DROP 並重建 scenarios / courses / course_sentences / course_vocabulary，
 --       執行後舊情境資料會全部清除再重新載入。
 --       users / refresh_tokens / user_profiles 不在 DROP 範圍，使用者資料會保留。
+--       收藏表 FK 至內容表，重跑種子時收藏列會一併清除。
 -- ============================================================
 
+DROP TABLE IF EXISTS user_saved_vocabulary, user_saved_sentences CASCADE;
 DROP TABLE IF EXISTS course_vocabulary, course_sentences, courses, scenarios CASCADE;
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -140,6 +142,35 @@ CREATE TABLE course_vocabulary (
 );
 
 CREATE INDEX idx_vocabulary_course ON course_vocabulary (course_id, order_index);
+
+-- ------------------------------------------------------------
+-- 收藏（FK 至內容表；重跑種子 DROP 內容表時會一併清除收藏列）
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS user_saved_vocabulary (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vocabulary_id  VARCHAR(50) NOT NULL REFERENCES course_vocabulary(id) ON DELETE CASCADE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT user_saved_vocabulary_unique UNIQUE (user_id, vocabulary_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_saved_sentences (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    sentence_id VARCHAR(50) NOT NULL REFERENCES course_sentences(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT user_saved_sentences_unique UNIQUE (user_id, sentence_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_saved_vocabulary_user
+    ON user_saved_vocabulary (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_saved_vocabulary_vocab
+    ON user_saved_vocabulary (vocabulary_id);
+CREATE INDEX IF NOT EXISTS idx_user_saved_sentences_user
+    ON user_saved_sentences (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_saved_sentences_sentence
+    ON user_saved_sentences (sentence_id);
 
 INSERT INTO scenarios (id, title, language, description, sort_order) VALUES
 ('en-cafe', '咖啡廳點餐', 'english', '從走進咖啡廳、點飲料到結帳外帶，完成一次完整的英文咖啡廳互動。', 1),

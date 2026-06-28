@@ -11,7 +11,15 @@ const state = {
   apiOnline: false,
   errorMessage: "",
   sidebarCollapsed: localStorage.getItem(STORAGE_KEY) === "1",
-  mobileSidebarOpen: false,
+  savedFilter: "all",
+  savedLanguage: "all",
+  savedItems: [],
+  savedVocabIds: new Set(),
+  savedSentenceIds: new Set(),
+  savedCount: 0,
+  savedLoading: false,
+  savedError: "",
+  savedApiReady: null,
 };
 
 const navItems = [
@@ -22,7 +30,7 @@ const navItems = [
   { id: "flashcards", icon: "layers", label: "單字卡", enabled: false },
   { id: "sentences", icon: "message-square-text", label: "句子練習", enabled: false },
   { id: "progress", icon: "bar-chart-3", label: "進度分析", enabled: false },
-  { id: "favorites", icon: "bookmark", label: "收藏", enabled: false },
+  { id: "favorites", icon: "bookmark", label: "收藏", enabled: true },
   { id: "settings", icon: "settings", label: "設定", enabled: false },
 ];
 
@@ -103,6 +111,150 @@ const homeMock = {
   },
 };
 
+function syncSavedStateFromModule() {
+  const mod = window.learnflowSavedState;
+  if (!mod) return;
+  state.savedItems = mod.savedItems;
+  state.savedVocabIds = mod.savedVocabIds;
+  state.savedSentenceIds = mod.savedSentenceIds;
+  state.savedCount = mod.savedCount;
+}
+
+function isVocabularySaved(vocabularyId) {
+  return state.savedVocabIds.has(vocabularyId);
+}
+
+function isSentenceSaved(sentenceId) {
+  return state.savedSentenceIds.has(sentenceId);
+}
+
+function createFavoriteButton(options) {
+  const { itemType, itemId, isSaved, compact = false } = options;
+  const button = el(
+    "button",
+    `favorite-btn ${isSaved ? "is-saved" : ""}${compact ? " favorite-btn-compact" : ""}`,
+  );
+  button.type = "button";
+  button.dataset.itemType = itemType;
+  button.dataset.itemId = itemId;
+  button.setAttribute("aria-label", isSaved ? "取消收藏" : "加入收藏");
+  button.setAttribute("aria-pressed", isSaved ? "true" : "false");
+  button.appendChild(createSvgIcon(["M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"], compact ? 16 : 18));
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleFavorite(itemType, itemId);
+  });
+  return button;
+}
+
+function updateFavoriteButtonState(itemType, itemId, isSaved) {
+  document
+    .querySelectorAll(`.favorite-btn[data-item-type="${itemType}"][data-item-id="${itemId}"]`)
+    .forEach((button) => {
+      button.classList.toggle("is-saved", isSaved);
+      button.setAttribute("aria-pressed", isSaved ? "true" : "false");
+      button.setAttribute("aria-label", isSaved ? "取消收藏" : "加入收藏");
+    });
+}
+
+async function toggleFavorite(itemType, itemId) {
+  const api = window.learnflowSavedApi;
+  if (!api) return;
+
+  const isSaved =
+    itemType === "vocabulary" ? isVocabularySaved(itemId) : isSentenceSaved(itemId);
+
+  try {
+    if (itemType === "vocabulary") {
+      if (isSaved) await api.unfavoriteVocabulary(itemId);
+      else await api.favoriteVocabulary(itemId);
+    } else if (isSaved) {
+      await api.unfavoriteSentence(itemId);
+    } else {
+      await api.favoriteSentence(itemId);
+    }
+
+    await api.refreshSavedState();
+    syncSavedStateFromModule();
+    updateFavoriteButtonState(itemType, itemId, !isSaved);
+    showToast(isSaved ? "已取消收藏" : "已加入收藏", { type: "info", duration: 2600 });
+  } catch (error) {
+    showToast(error.message || "收藏操作失敗", {
+      type: "error",
+      title: "收藏失敗",
+    });
+  }
+}
+
+async function loadSavedItems() {
+  const api = window.learnflowSavedApi;
+  if (!api) return;
+
+  state.savedLoading = true;
+  state.savedError = "";
+  renderNav();
+
+  try {
+    const options = {};
+    if (state.savedFilter !== "all") options.type = state.savedFilter;
+    if (state.savedLanguage !== "all") options.language = state.savedLanguage;
+    await api.refreshSavedState(options);
+    syncSavedStateFromModule();
+  } catch (error) {
+    state.savedError = error.message || "無法載入收藏";
+    state.savedItems = [];
+    state.savedCount = 0;
+  } finally {
+    state.savedLoading = false;
+  }
+}
+
+async function removeFavoriteItem(savedId) {
+  const api = window.learnflowSavedApi;
+  if (!api) return;
+
+  try {
+    await api.removeSavedItem(savedId);
+    await api.refreshSavedState({
+      type: state.savedFilter !== "all" ? state.savedFilter : undefined,
+      language: state.savedLanguage !== "all" ? state.savedLanguage : undefined,
+    });
+    syncSavedStateFromModule();
+    showToast("已移除收藏", { type: "info", duration: 2600 });
+    render();
+  } catch (error) {
+    showToast(error.message || "無法移除收藏", { type: "error", title: "收藏失敗" });
+  }
+}
+
+async function openSavedItem(item) {
+  try {
+    await loadCourseDetail(item.scenario_id, item.course_id);
+    state.view = "course";
+    state.errorMessage = "";
+
+    if (item.item_type === "sentence") {
+      const index = state.courseDetail.sentences.findIndex((sentence) => sentence.id === item.item_id);
+      state.selectedSentenceIndex = index >= 0 ? index : 0;
+    }
+
+    resetSentenceView();
+    render();
+  } catch (error) {
+    showToast(error.message || "無法開啟課程", { type: "warning" });
+  }
+}
+
+async function bootstrapSavedState() {
+  if (!window.learnflowSavedApi) return;
+  try {
+    await window.learnflowSavedApi.refreshSavedState();
+    syncSavedStateFromModule();
+  } catch {
+    // 收藏載入失敗不阻擋主流程
+  }
+}
+
 function getDisplayName() {
   const user = typeof getUser === "function" ? getUser() : null;
   if (!user) return homeMock.userName;
@@ -161,7 +313,7 @@ function dismissToast(toast) {
 }
 
 function showToast(message, options = {}) {
-  const { duration = 4200, type = "warning" } = options;
+  const { duration = 4200, type = "warning", title } = options;
   if (!toastStack) return;
 
   toastStack.querySelectorAll(".toast.visible").forEach((existing) => dismissToast(existing));
@@ -172,14 +324,27 @@ function showToast(message, options = {}) {
     createSvgIcon(
       type === "warning"
         ? ["M11 5 6 9H2v6h4l5 4V5z", "M22 9l-6 6", "M16 9l6 6"]
-        : ["M12 8v4", "M12 16h.01", "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z"],
+        : type === "info"
+          ? ["M20 6 9 17l-5-5"]
+          : type === "error"
+            ? ["M12 8v4", "M12 16h.01", "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z"]
+            : ["M12 8v4", "M12 16h.01", "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z"],
       20,
     ),
   );
   toast.appendChild(iconWrap);
 
+  const defaultTitle =
+    type === "warning"
+      ? "語音無法播放"
+      : type === "info"
+        ? "完成"
+        : type === "error"
+          ? "操作失敗"
+          : "提示";
+
   const body = el("div", "toast-body");
-  body.appendChild(el("p", "toast-title", type === "warning" ? "語音無法播放" : "提示"));
+  body.appendChild(el("p", "toast-title", title || defaultTitle));
   body.appendChild(el("p", "toast-message", message));
   toast.appendChild(body);
 
@@ -437,12 +602,14 @@ async function checkHealth() {
   try {
     const health = await api("/api/health");
     state.apiOnline = health.status === "ok";
+    state.savedApiReady = health.saved ?? null;
     state.errorMessage =
       health.database === "connected" ? "" : "資料庫未連線，請確認 DATABASE_URL 與 SQL 種子資料";
     apiStatus.textContent = health.database === "connected" ? "API 已連線" : "DB 未設定";
     apiStatus.className = health.database === "connected" ? "tag blue api-tag" : "tag api-tag";
   } catch (error) {
     state.apiOnline = false;
+    state.savedApiReady = null;
     state.errorMessage = "無法連線 API，請確認後端已啟動";
     apiStatus.textContent = "API 離線";
     apiStatus.className = "tag api-tag";
@@ -477,6 +644,10 @@ function navigateTo(view) {
   }
   closeMobileSidebar();
   render();
+
+  if (view === "favorites") {
+    loadSavedItems().then(() => render());
+  }
 }
 
 function renderNav() {
@@ -533,11 +704,15 @@ function renderComingSoon(title) {
 }
 
 function renderLanguageFilters(container, onChange, options = {}) {
+  const activeLang =
+    options.languageKey && Object.prototype.hasOwnProperty.call(state, options.languageKey)
+      ? state[options.languageKey]
+      : state.language;
   const row = el("div", `filter-row${options.compact ? " filter-row-compact" : ""}`);
   ["all", "english", "japanese"].forEach((lang) => {
     const button = el(
       "button",
-      `chip-button ${state.language === lang ? "active" : ""}`,
+      `chip-button ${activeLang === lang ? "active" : ""}`,
       languageLabel(lang),
     );
     button.type = "button";
@@ -669,12 +844,25 @@ function renderHome() {
   const shortcutGrid = el("div", "shortcut-grid");
   homeMock.shortcuts.forEach((item) => {
     const card = el("article", "shortcut");
+    if (item.icon === "bookmark") {
+      card.classList.add("shortcut-clickable");
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.addEventListener("click", () => navigateTo("favorites"));
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          navigateTo("favorites");
+        }
+      });
+    }
     const iconWrap = el("span", "shortcut-icon");
     iconWrap.appendChild(icon(item.icon));
     card.appendChild(iconWrap);
     const copy = el("div", "shortcut-copy");
     copy.appendChild(el("strong", null, item.title));
-    copy.appendChild(el("p", null, item.meta));
+    const metaText = item.icon === "bookmark" ? `${state.savedCount} 項` : item.meta;
+    copy.appendChild(el("p", null, metaText));
     card.appendChild(copy);
     shortcutGrid.appendChild(card);
   });
@@ -831,6 +1019,167 @@ function renderExplore() {
   page.appendChild(list);
 }
 
+function renderSavedTypeFilters(container, onChange) {
+  const row = el("div", "filter-row filter-row-compact");
+  [
+    ["all", "全部"],
+    ["vocabulary", "單字"],
+    ["sentence", "句子"],
+  ].forEach(([value, label]) => {
+    const button = el(
+      "button",
+      `chip-button ${state.savedFilter === value ? "active" : ""}`,
+      label,
+    );
+    button.type = "button";
+    button.addEventListener("click", () => onChange(value));
+    row.appendChild(button);
+  });
+  container.appendChild(row);
+}
+
+function renderFavorites() {
+  clear(viewRoot);
+  const page = el("div", "favorites-page");
+  viewRoot.appendChild(page);
+
+  const header = el("header", "favorites-header");
+  header.appendChild(el("h1", null, "我的收藏"));
+  header.appendChild(
+    el("p", null, "複習你標記的單字與句子，或回到原課程繼續學習。"),
+  );
+  if (state.savedCount > 0 && !state.savedLoading) {
+    header.appendChild(el("span", "favorites-count", `${state.savedItems.length} 項`));
+  }
+  page.appendChild(header);
+
+  const toolbar = el("div", "favorites-toolbar");
+  renderSavedTypeFilters(toolbar, async (filter) => {
+    state.savedFilter = filter;
+    await loadSavedItems();
+    render();
+  });
+  renderLanguageFilters(
+    toolbar,
+    async (lang) => {
+      state.savedLanguage = lang;
+      await loadSavedItems();
+      render();
+    },
+    { compact: true, languageKey: "savedLanguage" },
+  );
+  page.appendChild(toolbar);
+
+  if (state.savedLoading) {
+    const loading = el("section", "panel favorites-loading");
+    loading.appendChild(el("p", "muted", "載入收藏中…"));
+    page.appendChild(loading);
+    return;
+  }
+
+  if (state.savedError) {
+    const panel = el("section", "panel favorites-setup-error");
+    panel.appendChild(el("h2", null, "無法載入收藏"));
+    panel.appendChild(el("p", "muted", state.savedError));
+    if (state.savedApiReady === "tables_missing") {
+      panel.appendChild(
+        el(
+          "p",
+          "muted",
+          "請在資料庫執行 spec/database/schema.sql 建立 user_saved_vocabulary 與 user_saved_sentences。",
+        ),
+      );
+    } else {
+      panel.appendChild(
+        el(
+          "p",
+          "muted",
+          "若使用 Docker：cd deploy && docker compose up -d --build backend。若用 uvicorn：重啟後端程序。",
+        ),
+      );
+    }
+    page.appendChild(panel);
+    return;
+  }
+
+  if (!state.savedItems.length) {
+    const empty = el("section", "panel favorites-empty");
+    empty.appendChild(el("h2", null, "尚無收藏"));
+    empty.appendChild(
+      el("p", "muted", "在「學習」課程中，點句子或單字旁的書籤圖示即可加入收藏。"),
+    );
+    const button = el("button", "primary-button", "前往情境探索");
+    button.type = "button";
+    button.addEventListener("click", () => navigateTo("learn"));
+    empty.appendChild(button);
+    page.appendChild(empty);
+    return;
+  }
+
+  const list = el("section", "favorites-list");
+  state.savedItems.forEach((item) => {
+    const card = el("article", "favorite-card");
+    const isVocab = item.item_type === "vocabulary";
+
+    const top = el("div", "favorite-card-top");
+    const tags = el("div", "tag-row");
+    tags.appendChild(el("span", "tag blue", isVocab ? "單字" : "句子"));
+    tags.appendChild(el("span", "tag", languageLabel(item.language)));
+    top.appendChild(tags);
+
+    const removeBtn = el("button", "favorite-remove-btn");
+    removeBtn.type = "button";
+    removeBtn.setAttribute("aria-label", "移除收藏");
+    removeBtn.appendChild(createSvgIcon(["M18 6 6 18", "M6 6l12 12"], 16));
+    removeBtn.addEventListener("click", () => removeFavoriteItem(item.id));
+    top.appendChild(removeBtn);
+    card.appendChild(top);
+
+    if (isVocab) {
+      card.appendChild(el("h3", "favorite-card-title", item.term));
+      if (item.reading && item.reading !== item.term) {
+        card.appendChild(el("p", "favorite-card-reading", item.reading));
+      }
+      card.appendChild(el("p", "favorite-card-meaning", item.meaning));
+      if (item.example_sentence) {
+        card.appendChild(el("p", "favorite-card-example", item.example_sentence));
+      }
+    } else {
+      card.appendChild(el("h3", "favorite-card-title", item.target_text));
+      if (item.reading) {
+        card.appendChild(el("p", "favorite-card-reading", item.reading));
+      }
+      card.appendChild(el("p", "favorite-card-meaning", item.translation));
+    }
+
+    const meta = el("div", "favorite-card-meta");
+    meta.appendChild(el("span", null, item.scenario_title));
+    meta.appendChild(el("span", "favorite-card-meta-sep", "·"));
+    meta.appendChild(el("span", null, item.course_title));
+    card.appendChild(meta);
+
+    const actions = el("div", "favorite-card-actions");
+    const openBtn = el("button", "primary-button favorite-open-btn", "查看課程");
+    openBtn.type = "button";
+    openBtn.addEventListener("click", () => openSavedItem(item));
+    actions.appendChild(openBtn);
+
+    const audioUrl = isVocab ? item.audio_url : item.audio_url;
+    if (audioUrl) {
+      const playBtn = el("button", "ghost-button", "播放語音");
+      playBtn.type = "button";
+      playBtn.addEventListener("click", () => {
+        playAudioUrl(audioUrl, { label: isVocab ? "單字" : "句子" });
+      });
+      actions.appendChild(playBtn);
+    }
+
+    card.appendChild(actions);
+    list.appendChild(card);
+  });
+  page.appendChild(list);
+}
+
 function renderScenarioDetail() {
   clear(viewRoot);
   const page = el("div", "scenario-page");
@@ -969,6 +1318,14 @@ function renderCourseDetail() {
     content.appendChild(createTranslationToggle(current.translation));
 
     const actions = el("div", "lesson-actions");
+    actions.appendChild(
+      createFavoriteButton({
+        itemType: "sentence",
+        itemId: current.id,
+        isSaved: isSentenceSaved(current.id),
+      }),
+    );
+
     const playButton = el("button", "lesson-btn lesson-btn-primary", "播放語音");
     playButton.type = "button";
     playButton.addEventListener("click", () => playSentence(current));
@@ -1035,6 +1392,15 @@ function renderCourseDetail() {
         });
         top.appendChild(vocabPlay);
       }
+
+      top.appendChild(
+        createFavoriteButton({
+          itemType: "vocabulary",
+          itemId: item.id,
+          isSaved: isVocabularySaved(item.id),
+          compact: true,
+        }),
+      );
       card.appendChild(top);
 
       card.appendChild(el("p", "vocab-meaning", item.meaning));
@@ -1062,6 +1428,7 @@ function render() {
   else if (state.view === "learn") renderExplore();
   else if (state.view === "scenario") renderScenarioDetail();
   else if (state.view === "course") renderCourseDetail();
+  else if (state.view === "favorites") renderFavorites();
   else {
     const item = navItems.find((entry) => entry.id === state.view);
     renderComingSoon(item ? item.label : "功能");
@@ -1087,6 +1454,7 @@ sidebarBackdrop.addEventListener("click", closeMobileSidebar);
 async function init() {
   applySidebarState();
   await checkHealth();
+  await bootstrapSavedState();
   try {
     await loadScenarios();
   } catch (error) {
