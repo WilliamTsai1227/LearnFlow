@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.api.auth import router as auth_router
+from backend.api.lesson import router as lesson_router
 from backend.api.saved import router as saved_router
 from backend.api.scenarios import router as scenarios_router
 from backend.api.user import router as user_router
@@ -50,6 +51,7 @@ app.include_router(scenarios_router)
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(saved_router)
+app.include_router(lesson_router)
 
 if FRONTEND_DIR.is_dir():
     if (FRONTEND_DIR / "css").is_dir():

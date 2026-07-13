@@ -556,7 +556,7 @@ function refreshIcons() {
 }
 
 function activeNavId() {
-  if (state.view === "scenario" || state.view === "course") return "learn";
+  if (state.view === "scenario" || state.view === "course" || state.view === "lesson") return "learn";
   return state.view;
 }
 
@@ -638,7 +638,7 @@ function navigateTo(view) {
   if (item && !item.enabled) return;
 
   state.view = view;
-  if (view !== "learn" && view !== "scenario" && view !== "course") {
+  if (view !== "learn" && view !== "scenario" && view !== "course" && view !== "lesson") {
     state.scenarioDetail = null;
     state.courseDetail = null;
   }
@@ -1225,7 +1225,14 @@ function renderScenarioDetail() {
     const footer = el("div", "course-card-footer");
     const button = el("button", "course-card-link", "開始這堂課");
     button.type = "button";
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
+      window.learnflowLesson.start(scenario.id, course.id);
+    });
+    footer.appendChild(button);
+
+    const browseButton = el("button", "course-card-browse", "瀏覽內容");
+    browseButton.type = "button";
+    browseButton.addEventListener("click", async () => {
       try {
         await loadCourseDetail(scenario.id, course.id);
         state.view = "course";
@@ -1235,7 +1242,7 @@ function renderScenarioDetail() {
       }
       render();
     });
-    footer.appendChild(button);
+    footer.appendChild(browseButton);
     card.appendChild(footer);
 
     list.appendChild(card);
@@ -1271,6 +1278,12 @@ function renderCourseDetail() {
   meta.appendChild(el("span", "lesson-meta-item", `${course.sentences.length} 句`));
   meta.appendChild(el("span", "lesson-meta-item", `${course.vocabulary.length} 字`));
   meta.appendChild(el("span", `tag ${levelTagClass(course.level)}`, levelLabel(course.level)));
+  const startFlowBtn = el("button", "primary-button lesson-start-flow-btn", "開始學習流程");
+  startFlowBtn.type = "button";
+  startFlowBtn.addEventListener("click", () => {
+    window.learnflowLesson.start(course.scenario_id, course.id);
+  });
+  meta.appendChild(startFlowBtn);
   page.appendChild(meta);
 
   const layout = el("div", "lesson-layout");
@@ -1428,6 +1441,7 @@ function render() {
   else if (state.view === "learn") renderExplore();
   else if (state.view === "scenario") renderScenarioDetail();
   else if (state.view === "course") renderCourseDetail();
+  else if (state.view === "lesson") window.learnflowLesson.renderView();
   else if (state.view === "favorites") renderFavorites();
   else {
     const item = navItems.find((entry) => entry.id === state.view);

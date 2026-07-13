@@ -73,3 +73,42 @@ class CourseDetail(BaseModel):
     estimated_minutes: int
     sentences: List[CourseSentence]
     vocabulary: List[CourseVocabulary]
+
+
+class LessonStep(BaseModel):
+    step_index: int
+    type: str
+    title: str
+    data: dict
+
+
+class LessonResponse(BaseModel):
+    course: CourseDetail
+    scenario_title: str
+    steps: List[LessonStep]
+
+
+class LessonProgress(BaseModel):
+    course_id: str
+    current_step: int = 0
+    completed: bool = False
+    score: Optional[int] = None
+
+
+class LessonProgressUpdate(BaseModel):
+    current_step: int
+    completed: bool = False
+    score: Optional[int] = None
+
+
+class PracticeAttemptIn(BaseModel):
+    step_type: str
+    exercise_kind: str
+    item_type: Optional[str] = None
+    item_id: Optional[str] = None
+    is_correct: bool
+
+
+class PracticeAttemptsRequest(BaseModel):
+    course_id: str
+    attempts: List[PracticeAttemptIn]

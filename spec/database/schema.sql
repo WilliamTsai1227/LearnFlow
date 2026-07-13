@@ -213,3 +213,47 @@ CREATE INDEX idx_user_saved_sentences_user
 
 CREATE INDEX idx_user_saved_sentences_sentence
     ON user_saved_sentences (sentence_id);
+
+-- ------------------------------------------------------------
+-- user_course_progress — 每人每課的學習流程步驟進度
+-- API：GET/PUT /api/lesson/progress/{course_id}
+-- 規格：spec/document/LEARNING_FLOW_SPEC.md §3.1
+-- ------------------------------------------------------------
+
+CREATE TABLE user_course_progress (
+    user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id    VARCHAR(50) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    current_step SMALLINT    NOT NULL DEFAULT 0,
+    completed    BOOLEAN     NOT NULL DEFAULT false,
+    score        SMALLINT,
+    completed_at TIMESTAMPTZ,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, course_id)
+);
+
+CREATE INDEX idx_user_course_progress_user
+    ON user_course_progress (user_id, updated_at DESC);
+
+-- ------------------------------------------------------------
+-- practice_attempts — 每一次練習作答紀錄（餵複習排程與進度分析）
+-- API：POST /api/lesson/attempts
+-- 規格：spec/document/LEARNING_FLOW_SPEC.md §3.1
+-- ------------------------------------------------------------
+
+CREATE TABLE practice_attempts (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id     VARCHAR(50) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    step_type     VARCHAR(30) NOT NULL,
+    exercise_kind VARCHAR(30) NOT NULL,
+    item_type     VARCHAR(20),
+    item_id       VARCHAR(50),
+    is_correct    BOOLEAN     NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_practice_attempts_user_course
+    ON practice_attempts (user_id, course_id, created_at DESC);
+
+CREATE INDEX idx_practice_attempts_user_item
+    ON practice_attempts (user_id, item_type, item_id);

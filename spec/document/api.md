@@ -106,6 +106,12 @@ Authorization: Bearer <access_token>
 | GET | `/review` | 複習佇列 | ✅ 已實作 |
 | POST | `/conversation` | AI 對話一輪 | ✅ 已實作 |
 | POST | `/progress` | 儲存進度 | ✅ 已實作 |
+| GET | `/scenarios/{id}/courses/{course_id}/lesson` | 學習流程步驟展開 | ✅ 已實作 |
+| GET | `/lesson/progress/{course_id}` | 學習流程進度（JWT） | ✅ 已實作 |
+| PUT | `/lesson/progress/{course_id}` | 學習流程進度 upsert（JWT） | ✅ 已實作 |
+| POST | `/lesson/attempts` | 練習作答批次紀錄（JWT） | ✅ 已實作 |
+
+> 學習流程步驟機的完整規格（步驟定義、題型自動生成規則、資料表）見 [`LEARNING_FLOW_SPEC.md`](./LEARNING_FLOW_SPEC.md)。
 
 ### 2.2 待實作（Phase 2 起）
 

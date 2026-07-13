@@ -25,13 +25,15 @@
 
 ---
 
-## 目前實作範圍（9 張表）
+## 目前實作範圍（11 張表）
 
 ```text
 users 1 ── * refresh_tokens
       ├── 1 user_profiles
       ├── * user_saved_vocabulary  → course_vocabulary.id
-      └── * user_saved_sentences   → course_sentences.id
+      ├── * user_saved_sentences   → course_sentences.id
+      ├── * user_course_progress   → courses.id
+      └── * practice_attempts      → courses.id
 
 scenarios 1 ── * courses 1 ── * course_sentences
                               └── * course_vocabulary
@@ -88,6 +90,24 @@ scenarios 1 ── * courses 1 ── * course_sentences
 > 重跑 `scenario_seed.sql` 會 DROP 內容表，收藏列會一併清除；`users` 等會員資料仍保留。
 
 規格 API 見 [`api.md`](../document/api.md) §9.3–9.4、§12。
+
+### 學習流程（步驟機）
+
+| 表 | 說明 | 後端 |
+|----|------|------|
+| `user_course_progress` | 每人每課的步驟進度（PK：user_id + course_id） | `module/lesson_repository.py`, `api/lesson.py` |
+| `practice_attempts` | 每一次練習作答紀錄（餵複習排程與進度分析） | 同上 |
+
+**Lesson API（已實作）：**
+
+- `GET /api/scenarios/{id}/courses/{course_id}/lesson`
+- `GET /api/lesson/progress/{course_id}`（JWT）
+- `PUT /api/lesson/progress/{course_id}`（JWT）
+- `POST /api/lesson/attempts`（JWT）
+
+規格見 [`LEARNING_FLOW_SPEC.md`](../document/LEARNING_FLOW_SPEC.md)。
+
+> 重跑 `scenario_seed.sql` DROP 內容表時，`user_course_progress` 與 `practice_attempts` 因 FK `ON DELETE CASCADE` 也會被清除。
 
 ---
 
