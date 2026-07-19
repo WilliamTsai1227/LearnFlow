@@ -1,4 +1,30 @@
-# 語音批次產生（Google TTS → S3）
+# 語音批次產生
+
+兩個腳本，產出的檔案路徑完全相同（= DB 的 `audio_url`），可無縫切換：
+
+| 腳本 | TTS | 輸出 | 需要帳號 | 適用 |
+|------|-----|------|----------|------|
+| `generate_audio_local.py` | edge-tts（微軟 Edge 類神經語音，免費） | 本地 `app/frontend/audio/` | 不用 | 開發 / 原型 |
+| `generate_audio.py` | Google Cloud TTS（Neural2） | AWS S3（可同步本地） | GCP + AWS | 正式上線 |
+
+## 快速開始（本地免金鑰）
+
+```bash
+pip install edge-tts psycopg2-binary python-dotenv
+export DATABASE_URL=postgresql://learnflow:learnflow_dev@127.0.0.1:5433/learnflow
+
+python script/generate_audio_local.py --dry-run    # 預覽
+python script/generate_audio_local.py --limit 50   # 先試聽一小批
+python script/generate_audio_local.py              # 全部（只補缺少的檔）
+```
+
+可選環境變數：`EDGE_TTS_VOICE_JA`（預設 `ja-JP-NanamiNeural`）、`EDGE_TTS_VOICE_EN`（預設 `en-US-JennyNeural`）、`EDGE_TTS_RATE`（預設 `-10%`）、`EDGE_TTS_CONCURRENCY`（預設 6）。
+
+生成的 mp3 已被 `.gitignore` 排除（`app/frontend/audio/**/*.mp3`），FastAPI（`/audio` mount）與 Docker nginx（`location /audio/`）都會直接供檔，不需重啟。
+
+---
+
+# 正式管線：Google TTS → S3（`generate_audio.py`）
 
 從 PostgreSQL 讀取句子與單字，以 **Google Cloud Text-to-Speech** 產生 MP3 並上傳 **AWS S3**。
 
