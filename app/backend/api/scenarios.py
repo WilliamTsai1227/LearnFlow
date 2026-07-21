@@ -152,6 +152,7 @@ async def get_course(scenario_id: str, course_id: str) -> CourseDetail:
                 order_index=row["order_index"],
                 target_text=row["target_text"],
                 reading=row["reading"],
+                romaji=row["romaji"],
                 translation=row["translation"],
                 audio_url=row["audio_url"],
             )
@@ -163,6 +164,7 @@ async def get_course(scenario_id: str, course_id: str) -> CourseDetail:
                 order_index=row["order_index"],
                 term=row["term"],
                 reading=row["reading"],
+                romaji=row["romaji"],
                 meaning=row["meaning"],
                 example_sentence=row["example_sentence"],
                 audio_url=row["audio_url"],

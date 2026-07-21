@@ -374,8 +374,8 @@ function renderLessonQuiz(container, step, quiz, options = {}) {
       if (sentence) {
         const reveal = el("div", "lesson-quiz-reveal");
         reveal.appendChild(el("p", "lesson-quiz-reveal-text", sentence.target_text));
-        if (sentence.reading) {
-          reveal.appendChild(el("p", "lesson-quiz-reveal-reading", sentence.reading));
+        if (sentence.romaji) {
+          reveal.appendChild(el("p", "lesson-quiz-reveal-reading", sentence.romaji));
         }
         card.appendChild(reveal);
       }
@@ -420,7 +420,7 @@ function renderMissionStep(container, step) {
     el(
       "p",
       "lesson-mission-hint",
-      "流程：先聽（不看字）→ 逐句理解 → 聽力驗證 → 開口跟讀 → 靈活應用 → 寫。每一步都很短，跟著走就好。",
+      "流程：單字預習 → 先聽（不看字）→ 逐句理解 → 聽力驗證 → 開口跟讀 → 靈活應用 → 寫。每一步都很短，跟著走就好。",
     ),
   );
 
@@ -444,6 +444,134 @@ function renderMissionStep(container, step) {
 
   container.appendChild(card);
   container.appendChild(lessonContinueButton(true, "開始任務"));
+}
+
+function renderVocabPreviewStep(container, step) {
+  const rt = lessonRt(step.step_index);
+  const vocab = lessonState.lesson.course.vocabulary;
+  if (!rt.seen) {
+    rt.seen = new Set();
+    rt.index = 0;
+    rt.showMeaning = false;
+  }
+  rt.seen.add(rt.index);
+  const item = vocab[rt.index];
+
+  const card = el("section", "panel lesson-step-panel");
+  const header = el("div", "lesson-study-header");
+  header.appendChild(el("h2", null, "單字預習"));
+  header.appendChild(
+    el("span", "lesson-quiz-progress", `${rt.seen.size} / ${vocab.length} 字`),
+  );
+  card.appendChild(header);
+  card.appendChild(
+    el(
+      "p",
+      "muted",
+      "先認識這堂課會用到的單字。看到單字先想想中文意思，再點開對答案。",
+    ),
+  );
+
+  const flashcard = el("div", "lesson-flashcard");
+
+  const front = el("div", "lesson-flashcard-front");
+  front.appendChild(el("div", "lesson-flashcard-term", item.term));
+  if (item.romaji) {
+    front.appendChild(el("p", "lesson-flashcard-romaji", item.romaji));
+  }
+  if (item.reading && item.reading !== item.term) {
+    front.appendChild(el("p", "lesson-flashcard-reading", item.reading));
+  }
+  flashcard.appendChild(front);
+
+  if (item.audio_url) {
+    flashcard.appendChild(
+      lessonPlayIconButton("播放單字", () => lessonPlayUrl(item.audio_url), {
+        big: true,
+      }),
+    );
+  }
+
+  const revealRow = el("div", "lesson-flashcard-reveal");
+  const revealBtn = el(
+    "button",
+    `translation-toggle ${rt.showMeaning ? "is-visible" : ""}`,
+    rt.showMeaning ? "隱藏中文" : "顯示中文",
+  );
+  revealBtn.type = "button";
+  revealBtn.addEventListener("click", () => {
+    rt.showMeaning = !rt.showMeaning;
+    render();
+  });
+  revealRow.appendChild(revealBtn);
+  if (rt.showMeaning) {
+    revealRow.appendChild(el("p", "lesson-flashcard-meaning", item.meaning));
+    if (item.example_sentence) {
+      revealRow.appendChild(
+        el("p", "lesson-flashcard-example", item.example_sentence),
+      );
+    }
+  }
+  flashcard.appendChild(revealRow);
+
+  const actions = el("div", "lesson-actions lesson-flashcard-actions");
+  actions.appendChild(
+    createFavoriteButton({
+      itemType: "vocabulary",
+      itemId: item.id,
+      isSaved: isVocabularySaved(item.id),
+      compact: true,
+    }),
+  );
+  if (rt.index > 0) {
+    const prev = el("button", "lesson-btn lesson-btn-secondary", "上一個");
+    prev.type = "button";
+    prev.addEventListener("click", () => {
+      rt.index -= 1;
+      rt.showMeaning = false;
+      render();
+    });
+    actions.appendChild(prev);
+  }
+  if (rt.index < vocab.length - 1) {
+    const next = el("button", "lesson-btn lesson-btn-primary", "下一個");
+    next.type = "button";
+    next.addEventListener("click", () => {
+      rt.index += 1;
+      rt.showMeaning = false;
+      render();
+    });
+    actions.appendChild(next);
+  }
+  flashcard.appendChild(actions);
+  card.appendChild(flashcard);
+
+  const dots = el("div", "lesson-flashcard-dots");
+  vocab.forEach((_, index) => {
+    const dot = el(
+      "button",
+      `lesson-flashcard-dot ${index === rt.index ? "is-active" : ""}${rt.seen.has(index) ? " is-seen" : ""}`,
+    );
+    dot.type = "button";
+    dot.setAttribute("aria-label", `第 ${index + 1} 個單字`);
+    dot.addEventListener("click", () => {
+      rt.index = index;
+      rt.showMeaning = false;
+      render();
+    });
+    dots.appendChild(dot);
+  });
+  card.appendChild(dots);
+
+  container.appendChild(card);
+
+  const allSeen = rt.seen.size >= vocab.length;
+  container.appendChild(lessonContinueButton(allSeen));
+  if (!allSeen) {
+    container.appendChild(
+      el("p", "lesson-step-lock-hint", "看完全部單字卡後即可前往下一步。"),
+    );
+  }
 }
 
 function renderBlindListenStep(container, step) {
@@ -550,7 +678,10 @@ function renderSentenceStudyStep(container, step) {
 
   const stage = el("div", "lesson-stage-content lesson-study-stage");
   stage.appendChild(el("div", "target", current.target_text));
-  if (current.reading) {
+  if (current.romaji) {
+    stage.appendChild(el("p", "lesson-romaji", current.romaji));
+  }
+  if (current.reading && current.reading !== current.target_text) {
     stage.appendChild(el("p", "lesson-reading", current.reading));
   }
 
@@ -618,6 +749,9 @@ function renderSentenceStudyStep(container, step) {
       const top = el("div", "vocab-card-top");
       const termBlock = el("div", "vocab-term-block");
       termBlock.appendChild(el("strong", null, item.term));
+      if (item.romaji) {
+        termBlock.appendChild(el("span", "vocab-romaji", item.romaji));
+      }
       if (item.reading && item.reading !== item.term) {
         termBlock.appendChild(el("span", "vocab-reading", item.reading));
       }
@@ -700,7 +834,10 @@ function renderShadowingStep(container, step) {
 
   const stage = el("div", "lesson-stage-content lesson-shadow-stage");
   stage.appendChild(el("div", "target", sentence.target_text));
-  if (sentence.reading) {
+  if (sentence.romaji) {
+    stage.appendChild(el("p", "lesson-romaji", sentence.romaji));
+  }
+  if (sentence.reading && sentence.reading !== sentence.target_text) {
     stage.appendChild(el("p", "lesson-reading", sentence.reading));
   }
   stage.appendChild(el("p", "lesson-translation", sentence.translation));
@@ -1163,6 +1300,7 @@ function renderLessonView() {
   const step = currentLessonStep();
   const body = el("div", "lesson-flow-body");
   if (step.type === "mission") renderMissionStep(body, step);
+  else if (step.type === "vocab_preview") renderVocabPreviewStep(body, step);
   else if (step.type === "blind_listen") renderBlindListenStep(body, step);
   else if (step.type === "sentence_study") renderSentenceStudyStep(body, step);
   else if (step.type === "listen_check") renderListenCheckStep(body, step);

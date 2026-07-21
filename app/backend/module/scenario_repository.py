@@ -102,7 +102,7 @@ async def list_sentences_by_course(
 ) -> list[asyncpg.Record]:
     return await conn.fetch(
         """
-        SELECT id, order_index, target_text, reading, translation, audio_url
+        SELECT id, order_index, target_text, reading, romaji, translation, audio_url
         FROM course_sentences
         WHERE course_id = $1
         ORDER BY order_index
@@ -117,7 +117,7 @@ async def list_vocabulary_by_course(
 ) -> list[asyncpg.Record]:
     return await conn.fetch(
         """
-        SELECT id, order_index, term, reading, meaning, example_sentence, audio_url
+        SELECT id, order_index, term, reading, romaji, meaning, example_sentence, audio_url
         FROM course_vocabulary
         WHERE course_id = $1
         ORDER BY order_index

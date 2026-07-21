@@ -41,6 +41,7 @@ class CourseSentence(BaseModel):
     order_index: int
     target_text: str
     reading: Optional[str] = None
+    romaji: Optional[str] = None
     translation: str
     audio_url: Optional[str] = None
 
@@ -50,6 +51,7 @@ class CourseVocabulary(BaseModel):
     order_index: int
     term: str
     reading: Optional[str] = None
+    romaji: Optional[str] = None
     meaning: str
     example_sentence: Optional[str] = None
     audio_url: Optional[str] = None

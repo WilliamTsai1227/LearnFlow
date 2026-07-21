@@ -122,6 +122,7 @@ CREATE TABLE course_sentences (
     order_index  SMALLINT    NOT NULL,
     target_text  TEXT        NOT NULL,
     reading      TEXT,
+    romaji       TEXT,
     translation  TEXT        NOT NULL,
     audio_url    TEXT,
     UNIQUE (course_id, order_index)
@@ -135,6 +136,7 @@ CREATE TABLE course_vocabulary (
     order_index      SMALLINT     NOT NULL,
     term             VARCHAR(100) NOT NULL,
     reading          VARCHAR(200),
+    romaji           VARCHAR(300),
     meaning          TEXT         NOT NULL,
     example_sentence TEXT,
     audio_url        TEXT,

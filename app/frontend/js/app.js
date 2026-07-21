@@ -1137,6 +1137,9 @@ function renderFavorites() {
 
     if (isVocab) {
       card.appendChild(el("h3", "favorite-card-title", item.term));
+      if (item.romaji) {
+        card.appendChild(el("p", "favorite-card-romaji", item.romaji));
+      }
       if (item.reading && item.reading !== item.term) {
         card.appendChild(el("p", "favorite-card-reading", item.reading));
       }
@@ -1146,7 +1149,10 @@ function renderFavorites() {
       }
     } else {
       card.appendChild(el("h3", "favorite-card-title", item.target_text));
-      if (item.reading) {
+      if (item.romaji) {
+        card.appendChild(el("p", "favorite-card-romaji", item.romaji));
+      }
+      if (item.reading && item.reading !== item.target_text) {
         card.appendChild(el("p", "favorite-card-reading", item.reading));
       }
       card.appendChild(el("p", "favorite-card-meaning", item.translation));
@@ -1325,7 +1331,10 @@ function renderCourseDetail() {
     content.appendChild(el("p", "lesson-eyebrow", `句子 ${current.order_index}`));
     content.appendChild(el("div", "target", current.target_text));
 
-    if (current.reading) {
+    if (current.romaji) {
+      content.appendChild(el("p", "lesson-romaji", current.romaji));
+    }
+    if (current.reading && current.reading !== current.target_text) {
       content.appendChild(el("p", "lesson-reading", current.reading));
     }
     content.appendChild(createTranslationToggle(current.translation));
@@ -1392,6 +1401,9 @@ function renderCourseDetail() {
 
       const termBlock = el("div", "vocab-term-block");
       termBlock.appendChild(el("strong", null, item.term));
+      if (item.romaji) {
+        termBlock.appendChild(el("span", "vocab-romaji", item.romaji));
+      }
       if (item.reading && item.reading !== item.term) {
         termBlock.appendChild(el("span", "vocab-reading", item.reading));
       }

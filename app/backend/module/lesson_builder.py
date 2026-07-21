@@ -395,6 +395,15 @@ def build_lesson_steps(
         }
     ]
 
+    if vocabulary:
+        steps.append(
+            {
+                "type": "vocab_preview",
+                "title": "單字預習",
+                "data": {"vocabulary_count": len(vocabulary)},
+            }
+        )
+
     blind_listen = _build_blind_listen(
         rng, sentences, scenario_title, other_scenario_titles, other_course_translations
     )

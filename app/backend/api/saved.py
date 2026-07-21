@@ -55,6 +55,7 @@ class SavedVocabularyItem(BaseModel):
     created_at: datetime
     term: str
     reading: Optional[str] = None
+    romaji: Optional[str] = None
     meaning: str
     example_sentence: Optional[str] = None
     audio_url: Optional[str] = None
@@ -72,6 +73,7 @@ class SavedSentenceItem(BaseModel):
     created_at: datetime
     target_text: str
     reading: Optional[str] = None
+    romaji: Optional[str] = None
     translation: str
     audio_url: Optional[str] = None
     course_id: str
@@ -88,6 +90,7 @@ def _vocabulary_row_to_item(row: asyncpg.Record) -> SavedVocabularyItem:
         created_at=row["created_at"],
         term=row["term"],
         reading=row["reading"],
+        romaji=row["romaji"],
         meaning=row["meaning"],
         example_sentence=row["example_sentence"],
         audio_url=row["audio_url"],
@@ -106,6 +109,7 @@ def _sentence_row_to_item(row: asyncpg.Record) -> SavedSentenceItem:
         created_at=row["created_at"],
         target_text=row["target_text"],
         reading=row["reading"],
+        romaji=row["romaji"],
         translation=row["translation"],
         audio_url=row["audio_url"],
         course_id=row["course_id"],

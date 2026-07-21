@@ -3292,3 +3292,125 @@ button {
     width: 100%;
   }
 }
+
+/* ============================================================
+   羅馬拼音 + 單字卡預習（vocab_preview / romaji）
+   ============================================================ */
+
+.lesson-romaji {
+  margin: 0 0 6px;
+  color: var(--blue);
+  font-size: 15px;
+  font-style: italic;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+}
+
+.vocab-romaji {
+  display: block;
+  margin-top: 2px;
+  color: var(--blue);
+  font-size: 12.5px;
+  font-style: italic;
+}
+
+/* 單字卡預習步驟 */
+.lesson-flashcard {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-soft);
+  padding: 26px 18px 20px;
+  margin-top: 6px;
+  text-align: center;
+}
+
+.lesson-flashcard-front {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.lesson-flashcard-term {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+.lesson-flashcard-romaji {
+  margin: 0;
+  color: var(--blue);
+  font-size: 16px;
+  font-style: italic;
+}
+
+.lesson-flashcard-reading {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lesson-flashcard-reveal {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.lesson-flashcard-meaning {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.lesson-flashcard-example {
+  margin: 0;
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.lesson-flashcard-actions {
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.lesson-flashcard-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.lesson-flashcard-dot {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+}
+
+.lesson-flashcard-dot.is-seen {
+  border-color: var(--green);
+  background: rgba(23, 184, 144, 0.35);
+}
+
+.lesson-flashcard-dot.is-active {
+  border-color: var(--blue);
+  background: var(--blue);
+  transform: scale(1.25);
+}
+
+.favorite-card-romaji {
+  margin: 0 0 4px;
+  color: var(--blue);
+  font-size: 13px;
+  font-style: italic;
+}
