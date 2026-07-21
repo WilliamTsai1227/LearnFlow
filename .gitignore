@@ -25,3 +25,7 @@ credentials/
 # 生成的語音檔（由 script/generate_audio*.py 產生，不進版控）
 app/frontend/audio/**/*.mp3
 app/frontend/audio/**/*.tmp
+
+# 使用者上傳的筆記檔（不進版控）
+app/backend/uploads/**
+!app/backend/uploads/.gitkeep

@@ -109,6 +109,20 @@ scenarios 1 ── * courses 1 ── * course_sentences
 
 > 重跑 `scenario_seed.sql` DROP 內容表時，`user_course_progress` 與 `practice_attempts` 因 FK `ON DELETE CASCADE` 也會被清除。
 
+### 筆記（上傳 PDF / Word 標註）
+
+| 表 | 說明 | 後端 |
+|----|------|------|
+| `notes` | 使用者上傳的文件（PDF / Word）meta；檔案存於 `app/backend/uploads/{user_id}/{note_id}.{ext}` | `module/notes_repository.py`, `api/notes.py` |
+| `note_annotations` | 螢光筆標註與 comment 留言；`rects` 為頁面正規化座標 JSONB | 同上 |
+
+**Notes API（需 JWT）：**
+
+- `GET/POST /api/notes`、`GET/DELETE /api/notes/{id}`、`GET /api/notes/{id}/file`
+- `GET/POST /api/notes/{id}/annotations`、`PATCH/DELETE /api/annotations/{id}`
+
+前端 `js/notes.js` 用 `/vendor/pdf.min.js`（PDF）與 `/vendor/mammoth.browser.min.js`（Word→HTML）渲染，支援縮放拖曳、多色螢光筆、右鍵選單與可隱藏/顯示的 comment 泡泡。上傳檔不進版控（見 `.gitignore`）。
+
 ---
 
 ## 建議執行順序

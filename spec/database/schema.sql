@@ -259,3 +259,45 @@ CREATE INDEX idx_practice_attempts_user_course
 
 CREATE INDEX idx_practice_attempts_user_item
     ON practice_attempts (user_id, item_type, item_id);
+
+-- ------------------------------------------------------------
+-- notes — 使用者上傳的筆記文件（PDF / Word）
+-- API：POST/GET/DELETE /api/notes、GET /api/notes/{id}/file
+-- ------------------------------------------------------------
+
+CREATE TABLE notes (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       VARCHAR(255) NOT NULL,
+    file_type   VARCHAR(10)  NOT NULL,           -- 'pdf' | 'docx'
+    file_ext    VARCHAR(10)  NOT NULL,
+    size_bytes  BIGINT       NOT NULL DEFAULT 0,
+    canvas_x    REAL,
+    canvas_y    REAL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_notes_user ON notes (user_id, updated_at DESC);
+
+-- ------------------------------------------------------------
+-- note_annotations — 螢光筆標註與 comment 留言
+-- rects 為相對頁面正規化座標 [{x,y,w,h}]（0..1），縮放時前端換算
+-- API：GET/POST /api/notes/{id}/annotations、PATCH/DELETE /api/annotations/{id}
+-- ------------------------------------------------------------
+
+CREATE TABLE note_annotations (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id    UUID        NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind       VARCHAR(20) NOT NULL,             -- 'highlight' | 'comment'
+    page       SMALLINT    NOT NULL DEFAULT 1,
+    color      VARCHAR(20) NOT NULL DEFAULT 'yellow',
+    rects      JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    quote      TEXT,
+    body       TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_note_annotations_note ON note_annotations (note_id, page);

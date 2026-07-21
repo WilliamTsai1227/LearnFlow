@@ -3414,3 +3414,184 @@ button {
   font-size: 13px;
   font-style: italic;
 }
+
+
+/* ============================================================
+   筆記（notes.js）— 單一 Figma 式畫布：所有文件攤在同一張點陣白底上
+   ============================================================ */
+
+.notes-page {
+  position: relative;
+  height: calc(100vh - 92px);
+  min-height: 480px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* 點陣白底大畫布（固定白底，不隨系統深色模式變黑） */
+.note-stage {
+  position: absolute; inset: 0; overflow: hidden;
+  background-color: #ffffff;
+  background-image: radial-gradient(circle, rgba(23,31,56,0.12) 1.1px, transparent 1.1px);
+  background-size: 24px 24px;
+}
+.note-stage[data-tool="hand"] { cursor: grab; }
+.note-stage.panning { cursor: grabbing; }
+.note-stage[data-tool="highlight"] .note-textlayer span,
+.note-stage[data-tool="highlight"] .note-docx { cursor: crosshair; }
+
+/* 文件各自以絕對座標放在畫布上，可獨立拖曳；整體套用縮放/平移 */
+.note-pages {
+  position: absolute; top: 0; left: 0; width: 0; height: 0;
+  transform-origin: 0 0; will-change: transform;
+}
+
+.notes-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  text-align: center; color: var(--muted); padding: 24px;
+  transform: none;
+}
+.notes-center h2 { margin: 6px 0 0; color: var(--text); }
+.notes-empty svg { color: var(--blue); opacity: 0.7; }
+
+/* 每份文件 = 一個 frame（標題 + 刪除 + 頁面） */
+.note-doc { position: absolute; display: flex; flex-direction: column; gap: 8px; }
+.note-doc.dragging { z-index: 10; }
+.note-doc.dragging, .note-doc.dragging * { cursor: grabbing !important; }
+.note-doc.dragging .note-page { box-shadow: 0 16px 44px rgba(47,117,237,0.28); }
+/* 手掌模式：滑到文件上顯示可抓取（獨立移動），空白處才是平移 */
+.note-stage[data-tool="hand"] .note-doc { cursor: grab; }
+.note-doc-header {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; min-height: 22px;
+  width: fit-content; max-width: 100%; border-radius: 8px;
+  cursor: grab; user-select: none; background: rgba(255,255,255,0.6);
+}
+.note-doc-header:hover { background: var(--surface-soft); }
+.note-doc.dragging .note-doc-header { cursor: grabbing; }
+.note-doc-grip { display: inline-grid; place-items: center; color: var(--muted); opacity: 0.55; }
+.note-doc-header:hover .note-doc-grip { opacity: 0.9; }
+.note-doc-title { font-size: 13px; font-weight: 700; color: var(--muted); max-width: 620px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-doc:hover .note-doc-title { color: var(--blue); }
+.note-doc-del {
+  display: grid; place-items: center; width: 26px; height: 26px; opacity: 0;
+  border: 1px solid var(--line); background: rgba(255,255,255,0.94); color: var(--danger);
+  border-radius: 7px; cursor: pointer; transition: opacity 0.12s;
+}
+.note-doc:hover .note-doc-del { opacity: 1; }
+.note-doc-del:hover { border-color: var(--danger); background: #fff; }
+.note-doc-body { display: flex; flex-direction: column; gap: 16px; }
+.note-doc-error { padding: 40px; color: var(--danger); background: #fff; border: 1px dashed var(--danger); border-radius: 8px; }
+
+/* 頂列（浮動） */
+.notes-topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 16px 20px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.92) 30%, rgba(255,255,255,0));
+}
+.notes-topbar-text { pointer-events: auto; }
+.notes-topbar-text h1 { margin: 0 0 2px; font-size: 20px; }
+.notes-topbar-text p { margin: 0; font-size: 12.5px; max-width: 560px; }
+.notes-upload-btn {
+  pointer-events: auto; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; flex: 0 0 auto;
+  background: var(--surface-soft); color: var(--text);
+  border: 1px solid var(--line); border-radius: 9px; padding: 7px 13px;
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.notes-upload-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
+
+.notes-drop-hint {
+  position: absolute; inset: 12px; z-index: 20; display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  border: 2px dashed var(--blue); border-radius: 14px;
+  background: rgba(232,241,255,0.82); color: var(--blue); font-size: 16px; font-weight: 800; pointer-events: none;
+}
+.notes-page.dragging .notes-drop-hint { display: flex; }
+
+/* 底部中央浮動工具列（Figma pill） */
+.note-dock {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 8;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 7px 10px; box-shadow: 0 12px 34px rgba(23,31,56,0.22);
+}
+.note-dock-tools { display: flex; gap: 3px; }
+.note-dock-sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--line); }
+.note-tool { width: 36px; height: 36px; border: none; background: none; color: var(--muted); border-radius: 9px; display: grid; place-items: center; cursor: pointer; }
+.note-tool:hover { background: var(--surface-soft); color: var(--text); }
+.note-tool.active { background: var(--blue); color: #fff; }
+.note-colorbar { display: flex; gap: 5px; align-items: center; padding: 0 2px; }
+.note-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.note-swatch.active { box-shadow: 0 0 0 2px var(--blue); transform: scale(1.12); }
+.note-cmt-toggle { width: 36px; height: 36px; border: none; background: none; color: var(--muted); border-radius: 9px; display: grid; place-items: center; cursor: pointer; }
+.note-cmt-toggle:hover { background: var(--surface-soft); color: var(--text); }
+.note-cmt-toggle.active { background: var(--blue-soft); color: var(--blue); }
+.note-zoom { display: flex; align-items: center; gap: 2px; }
+.note-zoom-btn { min-width: 30px; height: 32px; border: none; background: none; border-radius: 8px; font-weight: 800; font-size: 16px; color: var(--text); cursor: pointer; }
+.note-zoom-btn:hover { background: var(--surface-soft); }
+.note-zoom-label { min-width: 52px; height: 32px; border: none; background: none; border-radius: 8px; text-align: center; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); cursor: pointer; }
+.note-zoom-label:hover { background: var(--surface-soft); color: var(--text); }
+
+/* 文件頁與文字層 */
+.note-page { position: relative; background: #fff; box-shadow: 0 6px 24px rgba(23,31,56,0.16); }
+.note-page canvas { display: block; }
+.note-page-docx { width: 820px; padding: 60px 72px; }
+.note-docx { font-size: 16px; line-height: 1.75; color: #1a1f2b; }
+.note-docx p { margin: 0 0 14px; }
+.note-docx h1, .note-docx h2, .note-docx h3 { line-height: 1.3; margin: 22px 0 10px; }
+.note-docx img { max-width: 100%; }
+
+.note-textlayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; opacity: 1; }
+.note-textlayer span { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.note-textlayer ::selection { background: rgba(47,117,237,0.35); }
+.note-docx ::selection { background: rgba(47,117,237,0.30); }
+
+/* 標註層 */
+.note-annots { position: absolute; inset: 0; pointer-events: none; }
+.note-hl { position: absolute; border-radius: 2px; mix-blend-mode: multiply; opacity: 0.55; }
+
+/* comment：文字下方淡綠色底線，可點選（手指游標），不顯示圖標 */
+.note-underline {
+  position: absolute; pointer-events: auto; cursor: pointer;
+  border-bottom: 3px solid #52c98a; border-radius: 1px;
+  background: rgba(82,201,138,0.10);
+  transition: background 0.12s, border-color 0.12s;
+}
+.note-underline:hover { background: rgba(82,201,138,0.22); border-bottom-color: #2fb374; }
+
+/* comment 泡泡：漫畫說話框（下方三角形連接） */
+.note-bubble {
+  position: absolute; transform: translate(0, calc(-100% - 12px)); z-index: 5;
+  min-width: 150px; max-width: 260px; pointer-events: auto;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(23,31,56,0.22); padding: 11px 13px;
+}
+.note-bubble::after {
+  content: ""; position: absolute; left: 22px; bottom: -9px;
+  width: 16px; height: 16px; background: #fff;
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  transform: rotate(45deg); border-bottom-right-radius: 3px;
+}
+.note-bubble-body { margin: 0 0 6px; font-size: 13.5px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.note-bubble-input { width: 100%; min-height: 60px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; font-size: 13.5px; resize: vertical; }
+.note-bubble-input:focus { outline: 2px solid var(--blue-soft); border-color: var(--blue); }
+.note-bubble-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.note-bubble-actions button { border: 1px solid var(--line); background: #fff; border-radius: 7px; padding: 4px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.note-bubble-save { background: var(--blue) !important; border-color: var(--blue) !important; color: #fff; }
+.note-bubble-del, .note-bubble-cancel { color: var(--muted); }
+.note-bubble-del:hover { color: var(--danger); border-color: var(--danger); }
+.note-bubble-edit:hover { color: var(--blue); border-color: var(--blue); }
+
+/* 右鍵選單 */
+.note-ctx { position: fixed; z-index: 200; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px rgba(23,31,56,0.25); padding: 8px; min-width: 180px; display: grid; gap: 3px; }
+.note-ctx-colors { display: flex; gap: 6px; padding: 4px 6px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.note-ctx-swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.note-ctx-swatch:hover { transform: scale(1.15); }
+.note-ctx-item { display: flex; align-items: center; gap: 9px; width: 100%; border: none; background: none; border-radius: 8px; padding: 9px 10px; font-size: 13.5px; color: var(--text); cursor: pointer; text-align: left; }
+.note-ctx-item:hover { background: var(--surface-soft); }
+
+@media (max-width: 720px) {
+  .notes-topbar-text p { display: none; }
+}

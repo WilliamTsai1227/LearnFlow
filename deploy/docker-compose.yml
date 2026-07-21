@@ -31,6 +31,8 @@ services:
     restart: unless-stopped
     volumes:
       - ../app/backend:/app/backend:ro
+      # 使用者上傳的筆記檔存到可寫入的具名 volume（程式碼目錄是唯讀掛載，不能寫）
+      - notes_uploads:/data/uploads
     env_file:
       - ../.env
     environment:
@@ -38,6 +40,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-learnflow}:${POSTGRES_PASSWORD:-learnflow_dev}@postgres:5432/${POSTGRES_DB:-learnflow}
       DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-1}
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-5}
+      # 筆記上傳檔存放目錄（對應上方 notes_uploads volume）
+      NOTES_UPLOAD_DIR: /data/uploads
       # Google OAuth / SECRET_KEY / FRONTEND_URL 等請只放在 ../.env（env_file）
       # 勿在此用 ${GOOGLE_CLIENT_ID:-} 覆写，否則 deploy/ 無 .env 時會變成空字串
     expose:
@@ -61,3 +65,5 @@ services:
 volumes:
   postgres_data:
     name: learnflow-postgres-data
+  notes_uploads:
+    name: learnflow-notes-uploads

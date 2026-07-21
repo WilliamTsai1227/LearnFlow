@@ -25,7 +25,7 @@ const state = {
 const navItems = [
   { id: "home", icon: "home", label: "首頁", enabled: true },
   { id: "learn", icon: "book-open", label: "學習", enabled: true },
-  { id: "ai-chat", icon: "message-circle", label: "AI 對話", enabled: false },
+  { id: "notes", icon: "file-text", label: "筆記", enabled: true },
   { id: "review", icon: "refresh-cw", label: "複習", enabled: false },
   { id: "flashcards", icon: "layers", label: "單字卡", enabled: false },
   { id: "sentences", icon: "message-square-text", label: "句子練習", enabled: false },
@@ -422,6 +422,7 @@ function icon(name) {
       "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5",
     layers: "M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
     "message-square-text": "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM13 8H7M17 12H7",
+    "file-text": "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
     "bar-chart-3": "M3 3v18h18M18 17V9M13 17V5M8 17v-3",
     bookmark: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
     settings: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
@@ -647,6 +648,9 @@ function navigateTo(view) {
 
   if (view === "favorites") {
     loadSavedItems().then(() => render());
+  }
+  if (view === "notes" && window.learnflowNotes) {
+    window.learnflowNotes.onEnter();
   }
 }
 
@@ -1454,6 +1458,7 @@ function render() {
   else if (state.view === "scenario") renderScenarioDetail();
   else if (state.view === "course") renderCourseDetail();
   else if (state.view === "lesson") window.learnflowLesson.renderView();
+  else if (state.view === "notes") window.learnflowNotes.renderView();
   else if (state.view === "favorites") renderFavorites();
   else {
     const item = navItems.find((entry) => entry.id === state.view);
