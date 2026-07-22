@@ -15,6 +15,7 @@ from backend.api.auth import router as auth_router
 from backend.api.lesson import router as lesson_router
 from backend.api.notes import router as notes_router
 from backend.api.saved import router as saved_router
+from backend.api.vocab import router as vocab_router
 from backend.api.scenarios import router as scenarios_router
 from backend.api.user import router as user_router
 from backend.database.connection import database
@@ -54,6 +55,7 @@ app.include_router(user_router)
 app.include_router(saved_router)
 app.include_router(lesson_router)
 app.include_router(notes_router)
+app.include_router(vocab_router)
 
 if FRONTEND_DIR.is_dir():
     if (FRONTEND_DIR / "css").is_dir():

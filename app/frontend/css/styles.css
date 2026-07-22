@@ -2608,7 +2608,6 @@ button {
 .favorites-page {
   display: grid;
   gap: 18px;
-  max-width: 960px;
 }
 
 .favorites-header h1 {
@@ -2639,7 +2638,9 @@ button {
 
 .favorites-list {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+  align-items: start;
 }
 
 .favorite-card {
@@ -3595,3 +3596,127 @@ button {
 @media (max-width: 720px) {
   .notes-topbar-text p { display: none; }
 }
+
+/* ============================================================
+   單字（vocab.js）— 單字集列表、五十音、常用單字
+   ============================================================ */
+
+.vocab-page { display: grid; gap: 16px; }
+.vocab-header h1 { margin: 0 0 4px; }
+.vocab-header p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.vocab-empty { text-align: center; }
+
+/* 單字集卡片 */
+.vocab-deck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.vocab-deck-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; box-shadow: var(--shadow); }
+.vocab-deck-cover { position: relative; height: 96px; display: grid; place-items: center; }
+.vocab-deck-cover.accent-blue { background: linear-gradient(135deg, #eaf2ff, #dbe8ff); }
+.vocab-deck-cover.accent-green { background: linear-gradient(135deg, #e5f8ef, #d3f0e0); }
+.vocab-deck-cover.accent-violet { background: linear-gradient(135deg, #efeaff, #e2dbff); }
+.vocab-deck-cover.accent-amber { background: linear-gradient(135deg, #fff2dc, #ffe7c0); }
+.vocab-deck-mark { font-size: 40px; font-weight: 900; color: rgba(23,31,56,0.5); }
+.vocab-deck-count { position: absolute; top: 10px; right: 12px; font-size: 12px; font-weight: 700; color: var(--muted); background: rgba(255,255,255,0.8); border-radius: 999px; padding: 2px 9px; }
+.vocab-deck-card { height: 100%; }
+.vocab-deck-body { display: flex; flex-direction: column; gap: 8px; padding: 14px; flex: 1; }
+.vocab-deck-body h3 { margin: 0; font-size: 16px; }
+.vocab-deck-desc { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.vocab-deck-link { margin-top: auto; min-height: 38px; border: 0; border-radius: 9px; background: var(--blue); color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; }
+.vocab-deck-link:hover { background: #2563d4; }
+
+/* 分頁（平假名/片假名） */
+.vocab-tabs { display: flex; gap: 8px; }
+.vocab-tab { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 8px 20px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.vocab-tab.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+.vocab-hint { margin: 0; color: var(--muted); font-size: 13px; }
+
+/* 五十音表格（清音 / 濁音・半濁音 / 拗音） */
+.kana-section { display: grid; gap: 10px; }
+.kana-section-title { margin: 6px 0 0; font-size: 16px; }
+.kana-table-wrap { overflow-x: auto; padding-bottom: 4px; }
+/* 用 1px 間隙 + 底色做出表格格線；每格統一 58px 對齊 */
+.kana-table {
+  display: grid; gap: 1px; width: fit-content; justify-content: start;
+  background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+}
+.kana-corner, .kana-colhead, .kana-rowhead, .kana-empty { background: var(--surface); }
+.kana-corner { display: grid; place-items: center; font-size: 11px; font-weight: 700; color: var(--muted); padding: 6px 0; }
+.kana-colhead { display: grid; place-items: center; font-size: 13px; font-weight: 800; color: var(--blue); padding: 6px 0; }
+.kana-rowhead { display: grid; place-items: center; font-size: 14px; font-weight: 800; color: var(--blue); text-transform: uppercase; }
+.kana-cell {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  min-height: 58px; border: none; border-radius: 0; background: var(--surface);
+  cursor: pointer; transition: background 0.12s;
+}
+.kana-cell:hover { background: var(--blue-soft); }
+.kana-cell:active { background: #dbe8ff; }
+.kana-char { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--text); }
+.kana-romaji { font-size: 11px; font-style: italic; color: var(--blue); }
+.kana-extra { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+.kana-extra-label { font-size: 13px; font-weight: 700; color: var(--muted); }
+.kana-extra .kana-cell { width: 58px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; }
+
+/* 常用單字 */
+.vocab-word-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vocab-word-count { font-size: 13px; font-weight: 700; color: var(--muted); }
+.word-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.word-card { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 14px; }
+.word-card-clickable { cursor: pointer; }
+.word-card-clickable:hover { border-color: var(--blue); }
+.word-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.word-term-block { display: grid; gap: 2px; }
+.word-term { font-size: 20px; font-weight: 800; line-height: 1.25; }
+.word-romaji { font-size: 13px; font-style: italic; color: var(--blue); }
+.word-meaning { margin: 0; font-size: 15px; color: var(--text); min-height: 22px; }
+.word-meaning.is-hidden { color: var(--muted); font-size: 13px; font-style: italic; }
+
+.vocab-play { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--line); background: var(--surface-soft); color: var(--blue); border-radius: 9px; cursor: pointer; }
+.vocab-play:hover { border-color: var(--blue); background: var(--blue-soft); }
+
+/* 筆記工具列：T 文字工具、橡皮擦游標 */
+.note-tool-text { font-size: 18px; font-weight: 900; font-family: Georgia, "Times New Roman", serif; }
+.note-stage[data-tool="eraser"] { cursor: cell; }
+.note-stage[data-tool="text"] { cursor: crosshair; }
+
+/* 拉框時的預覽方框 */
+.note-draw-marquee {
+  position: absolute; z-index: 20; border: 1.5px dashed var(--blue);
+  background: rgba(47,117,237,0.08); border-radius: 4px; pointer-events: none;
+}
+
+/* 畫布自由文字框（可拉邊框調整大小） */
+.note-textbox {
+  position: absolute; z-index: 6; display: flex; flex-direction: column;
+  background: #fffef7; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(23,31,56,0.16);
+}
+.note-textbox.dragging, .note-textbox.resizing { z-index: 12; box-shadow: 0 14px 34px rgba(47,117,237,0.26); }
+.note-textbox-bar {
+  display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto;
+  padding: 3px 6px; background: rgba(23,31,56,0.05); cursor: grab; user-select: none;
+  border-radius: 10px 10px 0 0;
+}
+.note-textbox.dragging .note-textbox-bar { cursor: grabbing; }
+.note-textbox-grip { display: inline-grid; place-items: center; color: var(--muted); opacity: 0.55; }
+.note-textbox-del { display: grid; place-items: center; width: 22px; height: 22px; border: none; background: none; color: var(--muted); border-radius: 6px; cursor: pointer; }
+.note-textbox-del:hover { color: var(--danger); background: rgba(239,87,87,0.1); }
+.note-textbox-input {
+  flex: 1; width: 100%; min-height: 0; border: none; background: transparent;
+  padding: 8px 10px; font: inherit; font-size: 14px; line-height: 1.5; color: var(--text); resize: none; outline: none;
+}
+
+/* 8 個縮放控點 */
+.note-resize-handle { position: absolute; width: 12px; height: 12px; z-index: 3; }
+.note-resize-handle::after {
+  content: ""; position: absolute; inset: 3px; background: #fff;
+  border: 1.5px solid var(--blue); border-radius: 2px;
+}
+.note-textbox:hover .note-resize-handle::after, .note-textbox.resizing .note-resize-handle::after { opacity: 1; }
+.note-resize-handle::after { opacity: 0; transition: opacity 0.12s; }
+.rh-nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.rh-n  { left: 50%; top: -6px; transform: translateX(-50%); cursor: ns-resize; }
+.rh-ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.rh-e  { right: -6px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+.rh-se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.rh-s  { left: 50%; bottom: -6px; transform: translateX(-50%); cursor: ns-resize; }
+.rh-sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.rh-w  { left: -6px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }

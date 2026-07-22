@@ -114,3 +114,36 @@ class PracticeAttemptIn(BaseModel):
 class PracticeAttemptsRequest(BaseModel):
     course_id: str
     attempts: List[PracticeAttemptIn]
+
+
+class VocabDeck(BaseModel):
+    id: str
+    language: Language
+    kind: str
+    title: str
+    description: str
+    item_count: int
+    sort_order: int
+
+
+class VocabItem(BaseModel):
+    id: str
+    group_key: Optional[str] = None
+    order_index: int
+    term: str
+    romaji: Optional[str] = None
+    reading: Optional[str] = None
+    meaning: Optional[str] = None
+    audio_url: Optional[str] = None
+    category: Optional[str] = None
+    kana_row: Optional[str] = None
+    kana_col: Optional[str] = None
+
+
+class VocabDeckDetail(BaseModel):
+    id: str
+    language: Language
+    kind: str
+    title: str
+    description: str
+    items: List[VocabItem]

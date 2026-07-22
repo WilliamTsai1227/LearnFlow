@@ -20,6 +20,7 @@ const state = {
   savedLoading: false,
   savedError: "",
   savedApiReady: null,
+  vocabLanguage: "all",
 };
 
 const navItems = [
@@ -27,7 +28,7 @@ const navItems = [
   { id: "learn", icon: "book-open", label: "學習", enabled: true },
   { id: "notes", icon: "file-text", label: "筆記", enabled: true },
   { id: "review", icon: "refresh-cw", label: "複習", enabled: false },
-  { id: "flashcards", icon: "layers", label: "單字卡", enabled: false },
+  { id: "flashcards", icon: "layers", label: "單字", enabled: true },
   { id: "sentences", icon: "message-square-text", label: "句子練習", enabled: false },
   { id: "progress", icon: "bar-chart-3", label: "進度分析", enabled: false },
   { id: "favorites", icon: "bookmark", label: "收藏", enabled: true },
@@ -652,6 +653,9 @@ function navigateTo(view) {
   if (view === "notes" && window.learnflowNotes) {
     window.learnflowNotes.onEnter();
   }
+  if (view === "flashcards" && window.learnflowVocab) {
+    window.learnflowVocab.onEnter();
+  }
 }
 
 function renderNav() {
@@ -1058,13 +1062,20 @@ function renderFavorites() {
   page.appendChild(header);
 
   const toolbar = el("div", "favorites-toolbar");
-  renderSavedTypeFilters(toolbar, async (filter) => {
+
+  const typeRow = el("div", "explore-toolbar");
+  typeRow.appendChild(el("span", "explore-toolbar-label", "類型"));
+  renderSavedTypeFilters(typeRow, async (filter) => {
     state.savedFilter = filter;
     await loadSavedItems();
     render();
   });
+  toolbar.appendChild(typeRow);
+
+  const langRow = el("div", "explore-toolbar");
+  langRow.appendChild(el("span", "explore-toolbar-label", "語言篩選"));
   renderLanguageFilters(
-    toolbar,
+    langRow,
     async (lang) => {
       state.savedLanguage = lang;
       await loadSavedItems();
@@ -1072,6 +1083,8 @@ function renderFavorites() {
     },
     { compact: true, languageKey: "savedLanguage" },
   );
+  toolbar.appendChild(langRow);
+
   page.appendChild(toolbar);
 
   if (state.savedLoading) {
@@ -1459,6 +1472,7 @@ function render() {
   else if (state.view === "course") renderCourseDetail();
   else if (state.view === "lesson") window.learnflowLesson.renderView();
   else if (state.view === "notes") window.learnflowNotes.renderView();
+  else if (state.view === "flashcards") window.learnflowVocab.renderView();
   else if (state.view === "favorites") renderFavorites();
   else {
     const item = navItems.find((entry) => entry.id === state.view);

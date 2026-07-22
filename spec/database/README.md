@@ -123,6 +123,17 @@ scenarios 1 ── * courses 1 ── * course_sentences
 
 前端 `js/notes.js` 用 `/vendor/pdf.min.js`（PDF）與 `/vendor/mammoth.browser.min.js`（Word→HTML）渲染，支援縮放拖曳、多色螢光筆、右鍵選單與可隱藏/顯示的 comment 泡泡。上傳檔不進版控（見 `.gitignore`）。
 
+### 單字（五十音 / 常用單字）
+
+| 表 | 說明 | 後端 |
+|----|------|------|
+| `vocab_decks` | 單字集（五十音、常用單字…），依 `language` 分組 | `module/vocab_repository.py`, `api/vocab.py` |
+| `vocab_items` | 每個假名 / 單字；`group_key` 分平假名/片假名；含 `romaji`、`audio_url` | 同上 |
+
+**Vocab API（免登入）：** `GET /api/vocab/decks?language=`、`GET /api/vocab/decks/{id}`
+
+種子由 [`../operate/seed_vocab.py`](../operate/seed_vocab.py) 寫入（五十音平/片假名各 46 + 常用單字，羅馬拼音由 cutlet 產生並手動修正例外）。發音檔用 `script/generate_audio_local.py` 產生（已含 `vocab_items`）。前端 `js/vocab.js`：語言切換、五十音分頁播音、常用單字隱顯中文。
+
 ---
 
 ## 建議執行順序

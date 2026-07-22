@@ -74,6 +74,22 @@ WHERE s.language IN ('english', 'japanese')
   AND TRIM(cv.audio_url) <> ''
   AND TRIM(cv.term) <> ''
 
+UNION ALL
+
+SELECT
+    d.language::text AS language,
+    'vocab_item'::text AS source_type,
+    vi.id AS item_id,
+    vi.term AS text,
+    vi.audio_url AS audio_url
+FROM vocab_items vi
+JOIN vocab_decks d ON d.id = vi.deck_id
+WHERE d.language IN ('english', 'japanese')
+  AND d.is_published = true
+  AND vi.audio_url IS NOT NULL
+  AND TRIM(vi.audio_url) <> ''
+  AND TRIM(vi.term) <> ''
+
 ORDER BY audio_url
 """
 

@@ -301,3 +301,60 @@ CREATE TABLE note_annotations (
 );
 
 CREATE INDEX idx_note_annotations_note ON note_annotations (note_id, page);
+
+-- ------------------------------------------------------------
+-- vocab_decks — 單字頁的單字集（五十音、常用單字…）
+-- API：GET /api/vocab/decks?language=、GET /api/vocab/decks/{id}/items
+-- ------------------------------------------------------------
+
+CREATE TABLE vocab_decks (
+    id           VARCHAR(50)   PRIMARY KEY,
+    language     language_code NOT NULL,
+    kind         VARCHAR(20)   NOT NULL,          -- 'kana' | 'word'
+    title        VARCHAR(255)  NOT NULL,
+    description  TEXT          NOT NULL DEFAULT '',
+    sort_order   SMALLINT      NOT NULL DEFAULT 0,
+    is_published BOOLEAN       NOT NULL DEFAULT true,
+    created_at   TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+-- ------------------------------------------------------------
+-- vocab_items — 單字集內的每個項目（一個假名 / 一個單字）
+-- group_key：kana 用 'hiragana' | 'katakana'；word 可為分類或 NULL
+-- ------------------------------------------------------------
+
+CREATE TABLE vocab_items (
+    id          VARCHAR(60)  PRIMARY KEY,
+    deck_id     VARCHAR(50)  NOT NULL REFERENCES vocab_decks(id) ON DELETE CASCADE,
+    group_key   VARCHAR(30),
+    order_index SMALLINT     NOT NULL,
+    term        VARCHAR(100) NOT NULL,
+    romaji      VARCHAR(120),
+    reading     VARCHAR(120),
+    meaning     TEXT,
+    audio_url   TEXT,
+    category    VARCHAR(20),                     -- kana：'seion'|'dakuon'|'yoon'
+    kana_row    VARCHAR(4),                      -- 'a'|'i'|'u'|'e'|'o'|'n'
+    kana_col    VARCHAR(4)                       -- 'K'|'S'|...|'KY'|'J'…（母音欄為 ''）
+);
+
+CREATE INDEX idx_vocab_items_deck ON vocab_items (deck_id, group_key, order_index);
+
+-- ------------------------------------------------------------
+-- note_texts — 筆記畫布上的自由文字框（不綁定特定文件，屬使用者的畫布）
+-- API：GET/POST /api/note-texts、PATCH/DELETE /api/note-texts/{id}
+-- ------------------------------------------------------------
+
+CREATE TABLE note_texts (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    canvas_x   REAL        NOT NULL DEFAULT 0,
+    canvas_y   REAL        NOT NULL DEFAULT 0,
+    canvas_w   REAL,
+    canvas_h   REAL,
+    body       TEXT        NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_note_texts_user ON note_texts (user_id);

@@ -183,3 +183,79 @@ async def delete_annotation(
         annotation_id,
         user_id,
     )
+
+
+async def list_texts(conn: asyncpg.Connection, user_id: UUID) -> list[asyncpg.Record]:
+    return await conn.fetch(
+        """
+        SELECT id, canvas_x, canvas_y, canvas_w, canvas_h, body, created_at, updated_at
+        FROM note_texts WHERE user_id = $1 ORDER BY created_at
+        """,
+        user_id,
+    )
+
+
+async def create_text(
+    conn: asyncpg.Connection,
+    user_id: UUID,
+    canvas_x: float,
+    canvas_y: float,
+    canvas_w: Optional[float],
+    canvas_h: Optional[float],
+    body: str,
+) -> asyncpg.Record:
+    return await conn.fetchrow(
+        """
+        INSERT INTO note_texts (user_id, canvas_x, canvas_y, canvas_w, canvas_h, body)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, canvas_x, canvas_y, canvas_w, canvas_h, body, created_at, updated_at
+        """,
+        user_id,
+        canvas_x,
+        canvas_y,
+        canvas_w,
+        canvas_h,
+        body,
+    )
+
+
+async def update_text(
+    conn: asyncpg.Connection,
+    user_id: UUID,
+    text_id: UUID,
+    canvas_x: Optional[float],
+    canvas_y: Optional[float],
+    canvas_w: Optional[float],
+    canvas_h: Optional[float],
+    body: Optional[str],
+) -> Optional[asyncpg.Record]:
+    return await conn.fetchrow(
+        """
+        UPDATE note_texts
+        SET canvas_x = COALESCE($3, canvas_x),
+            canvas_y = COALESCE($4, canvas_y),
+            canvas_w = COALESCE($5, canvas_w),
+            canvas_h = COALESCE($6, canvas_h),
+            body = COALESCE($7, body),
+            updated_at = now()
+        WHERE id = $1 AND user_id = $2
+        RETURNING id, canvas_x, canvas_y, canvas_w, canvas_h, body, created_at, updated_at
+        """,
+        text_id,
+        user_id,
+        canvas_x,
+        canvas_y,
+        canvas_w,
+        canvas_h,
+        body,
+    )
+
+
+async def delete_text(
+    conn: asyncpg.Connection, user_id: UUID, text_id: UUID
+) -> Optional[asyncpg.Record]:
+    return await conn.fetchrow(
+        "DELETE FROM note_texts WHERE id = $1 AND user_id = $2 RETURNING id",
+        text_id,
+        user_id,
+    )

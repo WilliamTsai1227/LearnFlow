@@ -26,6 +26,7 @@ const notesState = {
   loading: false,
   error: "",
   docs: [], // [{ meta, kind, pdfDoc?, docxHtml?, annotations:[], error? }]
+  texts: [], // 畫布自由文字框 [{ id, canvas_x, canvas_y, body }]
   tool: "select", // select | highlight | hand
   color: "yellow",
   zoom: 0.9,
@@ -44,6 +45,10 @@ let _notesSpace = false;
 let _notesPanStart = null;
 let _notesGlobalWired = false;
 let _draggingDoc = null;
+let _draggingText = null;
+let _resizingText = null;
+let _drawingText = null;
+let _erasing = false;
 
 function loadScriptOnce(src, globalCheck) {
   return new Promise((resolve, reject) => {
@@ -139,6 +144,7 @@ async function loadAllDocs() {
   notesState.openComments = new Set();
   render();
   try {
+    notesState.texts = (await notesJson("/note-texts")) || [];
     const metas = (await notesJson("/notes")) || [];
     const docs = [];
     for (const meta of metas) {
@@ -253,8 +259,20 @@ function toolButton(id, label, paths) {
   return b;
 }
 
+function toolButtonText(id, label) {
+  const b = el("button", `note-tool note-tool-text ${notesState.tool === id ? "active" : ""}`, "T");
+  b.type = "button";
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.addEventListener("click", () => {
+    notesState.tool = id;
+    updateToolUI();
+  });
+  return b;
+}
+
 function updateToolUI() {
-  const map = { select: 0, highlight: 1, hand: 2 };
+  const map = { select: 0, highlight: 1, eraser: 2, text: 3, hand: 4 };
   const tools = document.querySelectorAll(".note-dock-tools .note-tool");
   tools.forEach((b) => b.classList.remove("active"));
   if (tools[map[notesState.tool]]) tools[map[notesState.tool]].classList.add("active");
@@ -323,11 +341,11 @@ function renderNotesView() {
     box.appendChild(el("h2", null, "無法載入筆記"));
     box.appendChild(el("p", "muted", notesState.error));
     pages.appendChild(box);
-  } else if (!notesState.docs.length) {
+  } else if (!notesState.docs.length && !notesState.texts.length) {
     const empty = el("div", "notes-center notes-empty");
     empty.appendChild(createSvgIcon(["M12 5v14", "M5 12h14"], 34));
     empty.appendChild(el("h2", null, "把 PDF / Word 拖進來"));
-    empty.appendChild(el("p", "muted", "或點右上角「上傳文件」。上傳後就直接顯示在這張畫布上，可立即畫重點與留言。"));
+    empty.appendChild(el("p", "muted", "或點右上角「上傳文件」，也可用下方「T」在畫布任一處新增文字框。"));
     pages.appendChild(empty);
   } else {
     paintAllDocs();
@@ -341,6 +359,12 @@ function buildDock() {
   tools.appendChild(toolButton("select", "選取／文字", ["M4 4l7 16 2-7 7-2z"]));
   tools.appendChild(
     toolButton("highlight", "螢光筆", ["m9 11 6-6 4 4-6 6", "M9 11l-4 4v4h4l4-4", "M14 6l4 4"]),
+  );
+  tools.appendChild(
+    toolButton("eraser", "橡皮擦：點或拖過螢光筆／留言即可擦除", ["m19 20-9.5-9.5", "M7 21H4v-3l9.3-9.3a2.4 2.4 0 0 1 3.4 0l2.6 2.6a2.4 2.4 0 0 1 0 3.4L11 21z"]),
+  );
+  tools.appendChild(
+    toolButtonText("text", "文字框：點畫布任一處新增,可打字、自由移動"),
   );
   tools.appendChild(toolButton("hand", "移動：抓文件可獨立拖曳、抓空白平移畫布", ["M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 8 8 8 8 0 0 0 8-8v-3a2 2 0 0 0-4 0"]));
   dock.appendChild(tools);
@@ -448,6 +472,7 @@ async function paintAllDocs() {
   if (myToken !== _paintToken) return;
   layoutDocs();
   renderAnnotations();
+  renderTexts();
 
   if (!notesState.fitted && notesState.docs.some((d) => !d.error)) {
     notesState.fitted = true;
@@ -519,6 +544,229 @@ function focusDoc(doc) {
   notesState.panX = 60 - doc._x * z;
   notesState.panY = 74 - doc._y * z;
   applyTransform();
+}
+
+// ---------------------------------------------------------------------------
+// 橡皮擦
+// ---------------------------------------------------------------------------
+
+function eraseAt(clientX, clientY) {
+  const a = hitTestAnnotation(clientX, clientY);
+  if (a) removeAnnotation(a.id);
+}
+
+// ---------------------------------------------------------------------------
+// 畫布自由文字框
+// ---------------------------------------------------------------------------
+
+function renderTexts() {
+  const pages = document.getElementById("notePages");
+  if (!pages) return;
+  pages.querySelectorAll(".note-textbox").forEach((e) => e.remove());
+  notesState.texts.forEach((t) => pages.appendChild(buildTextBox(t)));
+}
+
+const TEXTBOX_MIN_W = 80;
+const TEXTBOX_MIN_H = 44;
+const RESIZE_DIRS = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
+function buildTextBox(t) {
+  const box = el("div", "note-textbox");
+  box.dataset.textId = t.id;
+  box.style.left = `${t.canvas_x}px`;
+  box.style.top = `${t.canvas_y}px`;
+  box.style.width = `${t.canvas_w || 200}px`;
+  box.style.height = `${t.canvas_h || 100}px`;
+
+  const bar = el("div", "note-textbox-bar");
+  bar.title = "拖曳可移動這個文字框";
+  const grip = el("span", "note-textbox-grip");
+  grip.appendChild(createSvgIcon(["M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01"], 12));
+  bar.appendChild(grip);
+  const del = el("button", "note-textbox-del");
+  del.type = "button";
+  del.title = "刪除文字框";
+  del.appendChild(createSvgIcon(["M18 6 6 18", "M6 6l12 12"], 13));
+  del.addEventListener("click", (e) => {
+    e.stopPropagation();
+    removeText(t.id);
+  });
+  bar.appendChild(del);
+  bar.addEventListener("mousedown", (e) => startTextDrag(e, t, box));
+  box.appendChild(bar);
+
+  const ta = el("textarea", "note-textbox-input");
+  ta.value = t.body || "";
+  ta.placeholder = "輸入文字…";
+  ta.addEventListener("mousedown", (e) => e.stopPropagation());
+  ta.addEventListener("blur", () => saveTextBody(t, ta.value));
+  box.appendChild(ta);
+
+  // 8 個縮放控點
+  RESIZE_DIRS.forEach((dir) => {
+    const h = el("span", `note-resize-handle rh-${dir}`);
+    h.dataset.dir = dir;
+    h.addEventListener("mousedown", (e) => startTextResize(e, t, box, dir));
+    box.appendChild(h);
+  });
+
+  if (t._editing) {
+    t._editing = false;
+    requestAnimationFrame(() => ta.focus());
+  }
+  return box;
+}
+
+// T 工具：在畫布上拉出一個任意大小的方框 → 放開後成為可打字的文字框
+function beginDrawText(clientX, clientY) {
+  const pages = document.getElementById("notePages");
+  const stage = document.querySelector(".note-stage");
+  if (!pages || !stage) return;
+  const rect = stage.getBoundingClientRect();
+  const sx = (clientX - rect.left - notesState.panX) / notesState.zoom;
+  const sy = (clientY - rect.top - notesState.panY) / notesState.zoom;
+  const el2 = el("div", "note-draw-marquee");
+  el2.style.left = `${sx}px`;
+  el2.style.top = `${sy}px`;
+  pages.appendChild(el2);
+  _drawingText = { sx, sy, el: el2, rect };
+}
+
+function updateDrawText(clientX, clientY) {
+  if (!_drawingText) return;
+  const { sx, sy, el: el2, rect } = _drawingText;
+  const cx = (clientX - rect.left - notesState.panX) / notesState.zoom;
+  const cy = (clientY - rect.top - notesState.panY) / notesState.zoom;
+  const x = Math.min(sx, cx);
+  const y = Math.min(sy, cy);
+  const w = Math.abs(cx - sx);
+  const h = Math.abs(cy - sy);
+  el2.style.left = `${x}px`;
+  el2.style.top = `${y}px`;
+  el2.style.width = `${w}px`;
+  el2.style.height = `${h}px`;
+  _drawingText.geom = { x, y, w, h };
+}
+
+function endDrawText() {
+  if (!_drawingText) return;
+  const { el: el2, sx, sy } = _drawingText;
+  const g = _drawingText.geom;
+  el2.remove();
+  _drawingText = null;
+  // 拉得夠大 → 用畫出的尺寸；只是點一下 → 用預設尺寸
+  const geom =
+    g && g.w >= TEXTBOX_MIN_W && g.h >= TEXTBOX_MIN_H
+      ? g
+      : { x: sx, y: sy, w: 200, h: 100 };
+  const t = {
+    id: `tmp-${Date.now()}`,
+    canvas_x: geom.x,
+    canvas_y: geom.y,
+    canvas_w: geom.w,
+    canvas_h: geom.h,
+    body: "",
+    _editing: true,
+  };
+  const wasEmpty = !notesState.docs.length && notesState.texts.length === 0;
+  notesState.texts.push(t);
+  if (wasEmpty) render();
+  else renderTexts();
+}
+
+function startTextResize(e, t, box, dir) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  _resizingText = {
+    t,
+    el: box,
+    dir,
+    startX: e.clientX,
+    startY: e.clientY,
+    origX: t.canvas_x || 0,
+    origY: t.canvas_y || 0,
+    origW: t.canvas_w || box.offsetWidth,
+    origH: t.canvas_h || box.offsetHeight,
+  };
+  box.classList.add("resizing");
+}
+
+function startTextDrag(e, t, box) {
+  if (e.button !== 0) return;
+  if (e.target.closest(".note-textbox-del")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  _draggingText = {
+    t,
+    el: box,
+    startX: e.clientX,
+    startY: e.clientY,
+    origX: t.canvas_x || 0,
+    origY: t.canvas_y || 0,
+  };
+  box.classList.add("dragging");
+}
+
+async function saveTextBody(t, body) {
+  const trimmed = body.trim();
+  if (String(t.id).startsWith("tmp-")) {
+    if (!trimmed) {
+      // 空的新文字框 → 不寫入 DB，直接移除
+      notesState.texts = notesState.texts.filter((x) => x !== t);
+      renderTexts();
+      return;
+    }
+    try {
+      const saved = await notesJson("/note-texts", {
+        method: "POST",
+        body: JSON.stringify({
+          canvas_x: t.canvas_x,
+          canvas_y: t.canvas_y,
+          canvas_w: t.canvas_w,
+          canvas_h: t.canvas_h,
+          body,
+        }),
+      });
+      t.id = saved.id;
+      t.body = body;
+    } catch (e) {
+      showToast(e.message || "儲存文字框失敗", { type: "error" });
+    }
+    return;
+  }
+  if (trimmed === (t.body || "").trim()) return;
+  t.body = body;
+  try {
+    await notesJson(`/note-texts/${t.id}`, { method: "PATCH", body: JSON.stringify({ body }) });
+  } catch (e) {
+    showToast(e.message || "儲存文字框失敗", { type: "error" });
+  }
+}
+
+function saveTextGeometry(t) {
+  if (String(t.id).startsWith("tmp-")) return;
+  notesJson(`/note-texts/${t.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      canvas_x: t.canvas_x,
+      canvas_y: t.canvas_y,
+      canvas_w: t.canvas_w,
+      canvas_h: t.canvas_h,
+    }),
+  }).catch(() => {});
+}
+
+async function removeText(id) {
+  const t = notesState.texts.find((x) => x.id === id);
+  notesState.texts = notesState.texts.filter((x) => x.id !== id);
+  renderTexts();
+  if (!t || String(id).startsWith("tmp-")) return;
+  try {
+    await notesJson(`/note-texts/${id}`, { method: "DELETE" });
+  } catch (e) {
+    showToast(e.message || "刪除失敗", { type: "error" });
+  }
 }
 
 async function paintPdfInto(body, doc, myToken) {
@@ -999,6 +1247,46 @@ function wireGlobalOnce() {
       renderAnnotations();
       return;
     }
+    if (_draggingText) {
+      const z = notesState.zoom || 1;
+      const nx = _draggingText.origX + (e.clientX - _draggingText.startX) / z;
+      const ny = _draggingText.origY + (e.clientY - _draggingText.startY) / z;
+      _draggingText.t.canvas_x = nx;
+      _draggingText.t.canvas_y = ny;
+      _draggingText.el.style.left = `${nx}px`;
+      _draggingText.el.style.top = `${ny}px`;
+      return;
+    }
+    if (_resizingText) {
+      const z = notesState.zoom || 1;
+      const r = _resizingText;
+      const dx = (e.clientX - r.startX) / z;
+      const dy = (e.clientY - r.startY) / z;
+      let x = r.origX;
+      let y = r.origY;
+      let w = r.origW;
+      let h = r.origH;
+      if (r.dir.includes("e")) w = r.origW + dx;
+      if (r.dir.includes("s")) h = r.origH + dy;
+      if (r.dir.includes("w")) { w = r.origW - dx; x = r.origX + dx; }
+      if (r.dir.includes("n")) { h = r.origH - dy; y = r.origY + dy; }
+      if (w < TEXTBOX_MIN_W) { if (r.dir.includes("w")) x = r.origX + (r.origW - TEXTBOX_MIN_W); w = TEXTBOX_MIN_W; }
+      if (h < TEXTBOX_MIN_H) { if (r.dir.includes("n")) y = r.origY + (r.origH - TEXTBOX_MIN_H); h = TEXTBOX_MIN_H; }
+      r.t.canvas_x = x; r.t.canvas_y = y; r.t.canvas_w = w; r.t.canvas_h = h;
+      r.el.style.left = `${x}px`;
+      r.el.style.top = `${y}px`;
+      r.el.style.width = `${w}px`;
+      r.el.style.height = `${h}px`;
+      return;
+    }
+    if (_drawingText) {
+      updateDrawText(e.clientX, e.clientY);
+      return;
+    }
+    if (_erasing) {
+      eraseAt(e.clientX, e.clientY);
+      return;
+    }
     if (!_notesPanning) return;
     notesState.panX = _notesPanStart.px + (e.clientX - _notesPanStart.x);
     notesState.panY = _notesPanStart.py + (e.clientY - _notesPanStart.y);
@@ -1012,6 +1300,26 @@ function wireGlobalOnce() {
       doc.meta.canvas_y = doc._y;
       saveDocPosition(doc.meta.id, doc._x, doc._y);
       _draggingDoc = null;
+      return;
+    }
+    if (_draggingText) {
+      _draggingText.el.classList.remove("dragging");
+      saveTextGeometry(_draggingText.t);
+      _draggingText = null;
+      return;
+    }
+    if (_resizingText) {
+      _resizingText.el.classList.remove("resizing");
+      saveTextGeometry(_resizingText.t);
+      _resizingText = null;
+      return;
+    }
+    if (_drawingText) {
+      endDrawText();
+      return;
+    }
+    if (_erasing) {
+      _erasing = false;
       return;
     }
     if (_notesPanning) {
@@ -1057,6 +1365,21 @@ function wireStageInteractions(stage) {
   );
 
   stage.addEventListener("mousedown", (e) => {
+    // 橡皮擦：按下即開始擦除（點或拖過標註）
+    if (notesState.tool === "eraser" && e.button === 0) {
+      e.preventDefault();
+      _erasing = true;
+      eraseAt(e.clientX, e.clientY);
+      return;
+    }
+    // 文字框工具：在畫布空白處拉出一個方框（放開後可打字）；按在既有文字框上則不畫，讓它可編輯/拖曳
+    if (notesState.tool === "text" && e.button === 0) {
+      if (!e.target.closest(".note-textbox")) {
+        e.preventDefault();
+        beginDrawText(e.clientX, e.clientY);
+      }
+      return;
+    }
     // 手掌工具按在某份文件上 → 獨立拖曳那份文件；按在空白畫布 → 平移整張畫布
     if (notesState.tool === "hand" && e.button === 0) {
       const overDoc = e.target.closest(".note-doc");
