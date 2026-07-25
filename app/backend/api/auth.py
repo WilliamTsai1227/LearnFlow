@@ -423,3 +423,46 @@ async def refresh_access_token(
         "access_token": new_at,
         "token_type": "bearer",
     }
+
+
+class ExtensionTokenRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/api/user/extension/token", response_model=TokenRefreshResponse)
+async def extension_access_token(
+    body: ExtensionTokenRequest,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """
+    Chrome 擴充換取 access token。
+    擴充以 `cookies` 權限讀出網站的 HttpOnly refresh_token，POST 到此端點換 access token。
+    與 /api/user/refresh 不同：**不輪替、不消耗** refresh token，避免干擾網站分頁的既有 session。
+    僅驗證該 RT 仍存在於 DB 且未過期，簽發短效 access token。
+    """
+    payload = decode_token(body.refresh_token)
+    if not payload or payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token invalid or expired. Please login again.",
+        )
+
+    row = await db.fetchrow(
+        """
+        SELECT rt.user_id, u.email
+        FROM refresh_tokens rt
+        JOIN users u ON u.id = rt.user_id
+        WHERE rt.token = $1 AND rt.expires_at > NOW() AND u.deleted_at IS NULL
+        """,
+        body.refresh_token,
+    )
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session not found. Please log in to LearnFlow again.",
+        )
+
+    access_token = create_access_token(
+        data={"sub": str(row["user_id"]), "email": row["email"]}
+    )
+    return {"status": "success", "access_token": access_token, "token_type": "bearer"}

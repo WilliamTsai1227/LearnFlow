@@ -11,10 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.api.analytics import router as analytics_router
 from backend.api.auth import router as auth_router
+from backend.api.captures import router as captures_router
 from backend.api.lesson import router as lesson_router
 from backend.api.notes import router as notes_router
+from backend.api.review import router as review_router
 from backend.api.saved import router as saved_router
+from backend.api.translate import router as translate_router
+from backend.api.tts import router as tts_router
 from backend.api.vocab import router as vocab_router
 from backend.api.scenarios import router as scenarios_router
 from backend.api.user import router as user_router
@@ -34,6 +39,12 @@ _ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+# Chrome 擴充的來源為 chrome-extension://<id>。設定 EXTENSION_ORIGIN 可精確允許某個已發佈的擴充；
+# 未設定時，下方 allow_origin_regex 會放行任意 chrome-extension:// 來源（本機開發用）。
+_EXTENSION_ORIGIN = os.getenv("EXTENSION_ORIGIN", "").strip()
+if _EXTENSION_ORIGIN:
+    _ALLOWED_ORIGINS.append(_EXTENSION_ORIGIN)
+
 app = FastAPI(
     title="LearnFlow API",
     description="FastAPI backend for scenario-first language learning.",
@@ -43,7 +54,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
-    allow_origin_regex=r"^https?://(192\.168\.0\.\d+)(:\d+)?$",
+    allow_origin_regex=r"^(https?://(192\.168\.0\.\d+)(:\d+)?|chrome-extension://[a-z]{32})$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,6 +67,11 @@ app.include_router(saved_router)
 app.include_router(lesson_router)
 app.include_router(notes_router)
 app.include_router(vocab_router)
+app.include_router(captures_router)
+app.include_router(review_router)
+app.include_router(translate_router)
+app.include_router(tts_router)
+app.include_router(analytics_router)
 
 if FRONTEND_DIR.is_dir():
     if (FRONTEND_DIR / "css").is_dir():

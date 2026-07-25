@@ -21,16 +21,17 @@ const state = {
   savedError: "",
   savedApiReady: null,
   vocabLanguage: "all",
+  favTab: "courses", // courses | youtube
 };
 
 const navItems = [
   { id: "home", icon: "home", label: "首頁", enabled: true },
   { id: "learn", icon: "book-open", label: "學習", enabled: true },
   { id: "notes", icon: "file-text", label: "筆記", enabled: true },
-  { id: "review", icon: "refresh-cw", label: "複習", enabled: false },
+  { id: "review", icon: "refresh-cw", label: "複習", enabled: true },
   { id: "flashcards", icon: "layers", label: "單字", enabled: true },
   { id: "sentences", icon: "message-square-text", label: "句子練習", enabled: false },
-  { id: "progress", icon: "bar-chart-3", label: "進度分析", enabled: false },
+  { id: "progress", icon: "bar-chart-3", label: "進度分析", enabled: true },
   { id: "favorites", icon: "bookmark", label: "收藏", enabled: true },
   { id: "settings", icon: "settings", label: "設定", enabled: false },
 ];
@@ -381,6 +382,26 @@ function playAudioUrl(url, options = {}) {
   });
 }
 
+// YouTube 收藏發音：呼叫後端 /api/tts（edge-tts 類神經語音，跟課程音檔同一套），
+// 失敗時（離線/未登入/上游服務問題）才退回瀏覽器內建語音，確保至少有聲音。
+let _ttsObjectUrl = null;
+async function playTts(text, language) {
+  if (!text) return;
+  try {
+    const res = await authFetch(
+      `${AUTH_API}/tts?text=${encodeURIComponent(text)}&language=${encodeURIComponent(language || "japanese")}`,
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    if (_ttsObjectUrl) URL.revokeObjectURL(_ttsObjectUrl);
+    _ttsObjectUrl = URL.createObjectURL(blob);
+    audioPlayer.src = _ttsObjectUrl;
+    await audioPlayer.play();
+  } catch (err) {
+    speakText(text, language);
+  }
+}
+
 function languageLabel(value) {
   return { english: "英文", japanese: "日文", all: "全部語言" }[value] || value;
 }
@@ -438,6 +459,21 @@ function icon(name) {
 
 function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
+}
+
+// 免費發音：瀏覽器內建語音合成（Web Speech API），無金鑰、無後端。
+// language 為 'japanese' | 'english'（其餘預設日文）。
+function speakText(text, language) {
+  if (!text || typeof window.speechSynthesis === "undefined") return;
+  try {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = language === "english" ? "en-US" : "ja-JP";
+    utter.rate = 0.9;
+    window.speechSynthesis.speak(utter);
+  } catch (e) {
+    /* 某些瀏覽器/系統無對應語音時忽略 */
+  }
 }
 
 function backChevronIcon() {
@@ -655,6 +691,12 @@ function navigateTo(view) {
   }
   if (view === "flashcards" && window.learnflowVocab) {
     window.learnflowVocab.onEnter();
+  }
+  if (view === "review" && window.learnflowReview) {
+    window.learnflowReview.onEnter();
+  }
+  if (view === "progress" && window.learnflowAnalytics) {
+    window.learnflowAnalytics.onEnter();
   }
 }
 
@@ -1061,6 +1103,33 @@ function renderFavorites() {
   }
   page.appendChild(header);
 
+  // 收藏來源分頁：課程收藏 / YouTube 收藏（Chrome 擴充擷取）
+  const tabs = el("div", "favorites-tabs");
+  [
+    { id: "courses", label: "課程收藏" },
+    { id: "youtube", label: "YouTube 收藏" },
+  ].forEach((tab) => {
+    const btn = el("button", `favorites-tab ${state.favTab === tab.id ? "active" : ""}`, tab.label);
+    btn.type = "button";
+    btn.addEventListener("click", () => {
+      if (state.favTab === tab.id) return;
+      state.favTab = tab.id;
+      render();
+      if (tab.id === "youtube" && window.learnflowCaptures) {
+        window.learnflowCaptures.onEnter();
+      }
+    });
+    tabs.appendChild(btn);
+  });
+  page.appendChild(tabs);
+
+  if (state.favTab === "youtube") {
+    if (window.learnflowCaptures) {
+      window.learnflowCaptures.renderInto(page);
+    }
+    return;
+  }
+
   const toolbar = el("div", "favorites-toolbar");
 
   const typeRow = el("div", "explore-toolbar");
@@ -1181,16 +1250,23 @@ function renderFavorites() {
     meta.appendChild(el("span", null, item.course_title));
     card.appendChild(meta);
 
-    const actions = el("div", "favorite-card-actions");
-    const openBtn = el("button", "primary-button favorite-open-btn", "查看課程");
+    const actions = el("div", "favorite-card-actions cap-actions");
+
+    const openBtn = el("button", "cap-action");
     openBtn.type = "button";
+    openBtn.appendChild(createSvgIcon(["M5 12h14", "m12 5 7 7-7 7"], 15));
+    openBtn.appendChild(el("span", null, "查看課程"));
     openBtn.addEventListener("click", () => openSavedItem(item));
     actions.appendChild(openBtn);
 
-    const audioUrl = isVocab ? item.audio_url : item.audio_url;
+    const audioUrl = item.audio_url;
     if (audioUrl) {
-      const playBtn = el("button", "ghost-button", "播放語音");
+      const playBtn = el("button", "cap-action");
       playBtn.type = "button";
+      playBtn.appendChild(
+        createSvgIcon(["M11 5 6 9H2v6h4l5 4z", "M15.54 8.46a5 5 0 0 1 0 7.07", "M19.07 4.93a10 10 0 0 1 0 14.14"], 15),
+      );
+      playBtn.appendChild(el("span", null, "播放語音"));
       playBtn.addEventListener("click", () => {
         playAudioUrl(audioUrl, { label: isVocab ? "單字" : "句子" });
       });
@@ -1473,6 +1549,8 @@ function render() {
   else if (state.view === "lesson") window.learnflowLesson.renderView();
   else if (state.view === "notes") window.learnflowNotes.renderView();
   else if (state.view === "flashcards") window.learnflowVocab.renderView();
+  else if (state.view === "review") window.learnflowReview.renderView();
+  else if (state.view === "progress") window.learnflowAnalytics.renderView();
   else if (state.view === "favorites") renderFavorites();
   else {
     const item = navItems.find((entry) => entry.id === state.view);

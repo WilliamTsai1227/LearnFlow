@@ -358,3 +358,106 @@ CREATE TABLE note_texts (
 );
 
 CREATE INDEX idx_note_texts_user ON note_texts (user_id);
+
+-- ------------------------------------------------------------
+-- captures — Chrome 擴充從 YouTube 字幕擷取的項目（單字或整句）
+-- API：POST/GET/DELETE /api/captures
+-- kind：'word'（點的單字）| 'sentence'（整句收藏）
+-- start_seconds：跳回影片的時間點（watch?v=<video_id>&t=<sec>s）
+-- ------------------------------------------------------------
+
+CREATE TABLE captures (
+    id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id          UUID          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind             VARCHAR(10)   NOT NULL,            -- 'word' | 'sentence'
+    language         language_code NOT NULL,
+    term             TEXT          NOT NULL,            -- 點的字，或整句
+    context_sentence TEXT,                              -- 該字所在的完整字幕句
+    translation      TEXT,
+    reading          TEXT,
+    romaji           TEXT,
+    video_id         VARCHAR(20)   NOT NULL,
+    video_url        TEXT          NOT NULL,
+    video_title      TEXT,
+    start_seconds    REAL          NOT NULL DEFAULT 0,
+    created_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT captures_unique UNIQUE (user_id, video_id, term, start_seconds)
+);
+
+CREATE INDEX idx_captures_user ON captures (user_id, created_at DESC);
+
+-- ------------------------------------------------------------
+-- srs_cards — 統一複習佇列與 FSRS 記憶狀態（多型：一張卡對應一個可複習項目）
+-- item_type：'capture'（→ captures.id）| 'vocabulary'（→ course_vocabulary.id）| 'sentence'（→ course_sentences.id）
+-- 「收藏內容自動進入 SRS」＝建立 capture / 收藏課程項目時同交易 upsert 一張卡（state=0, due=now）
+-- state：0=new 1=learning 2=review 3=relearning
+-- API：GET /api/review/queue、POST /api/review/{card_id}/grade、GET /api/review/summary
+-- ------------------------------------------------------------
+
+CREATE TABLE srs_cards (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_type    VARCHAR(20) NOT NULL,                  -- 'capture' | 'vocabulary' | 'sentence'
+    item_id      VARCHAR(60) NOT NULL,                  -- captures.id / course_vocabulary.id / course_sentences.id
+    stability    REAL        NOT NULL DEFAULT 0,        -- FSRS S
+    difficulty   REAL        NOT NULL DEFAULT 0,        -- FSRS D (0 未初始化，初始化後 1-10)
+    state        SMALLINT    NOT NULL DEFAULT 0,
+    due          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_review  TIMESTAMPTZ,
+    reps         INT         NOT NULL DEFAULT 0,
+    lapses       INT         NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT srs_cards_unique UNIQUE (user_id, item_type, item_id)
+);
+
+CREATE INDEX idx_srs_cards_due ON srs_cards (user_id, due);
+
+-- ------------------------------------------------------------
+-- srs_reviews — 每次複習評分紀錄（餵懶人追蹤/深度分析，可支援 undo）
+-- rating：1=Again 2=Hard 3=Good 4=Easy
+-- ------------------------------------------------------------
+
+CREATE TABLE srs_reviews (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    card_id        UUID        NOT NULL REFERENCES srs_cards(id) ON DELETE CASCADE,
+    rating         SMALLINT    NOT NULL,
+    state_before   SMALLINT    NOT NULL,
+    elapsed_days   REAL        NOT NULL DEFAULT 0,
+    scheduled_days REAL        NOT NULL DEFAULT 0,
+    reviewed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_srs_reviews_user ON srs_reviews (user_id, reviewed_at);
+CREATE INDEX idx_srs_reviews_card ON srs_reviews (card_id, reviewed_at);
+
+-- ------------------------------------------------------------
+-- translation_cache — 翻譯快取（同一 (詞, 語言對) 只查一次）
+-- API：POST /api/translate 先查此表，未命中才呼叫免費翻譯資源（MyMemory + Jisho）並寫回
+-- ------------------------------------------------------------
+
+CREATE TABLE translation_cache (
+    id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_language  language_code NOT NULL,
+    target_language  VARCHAR(10)   NOT NULL,
+    term             TEXT          NOT NULL,
+    payload          JSONB         NOT NULL DEFAULT '{}'::jsonb,  -- translation/reading/romaji/part_of_speech
+    created_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT translation_cache_unique UNIQUE (source_language, target_language, term)
+);
+
+-- ------------------------------------------------------------
+-- tts_cache — 語音合成快取（edge-tts，與課程音檔同一套語音/語速）
+-- API：GET /api/tts 先查此表，未命中才呼叫 edge-tts 並寫回
+-- 讓 YouTube 收藏（複習頁/收藏頁/Chrome 擴充）跟課程內容用同樣音色，
+-- 不再依賴瀏覽器內建 Web Speech API。
+-- ------------------------------------------------------------
+
+CREATE TABLE tts_cache (
+    id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    language     VARCHAR(10)   NOT NULL,
+    text         TEXT          NOT NULL,
+    audio        BYTEA         NOT NULL,
+    created_at   TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT tts_cache_unique UNIQUE (language, text)
+);

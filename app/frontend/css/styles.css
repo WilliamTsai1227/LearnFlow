@@ -2462,7 +2462,7 @@ button {
   }
 
   .view-root {
-    padding: 18px 16px 92px;
+    padding: 18px 16px 24px;
   }
 
   .hero-row,
@@ -2534,32 +2534,9 @@ button {
     grid-template-columns: 1fr;
   }
 
+  /* 行動版隱藏底部功能列：功能選單改由左上角漢堡選單展開側邊欄取用 */
   .mobile-tabbar {
-    position: fixed;
-    right: 12px;
-    bottom: 12px;
-    left: 12px;
-    z-index: 10;
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(18px);
-  }
-
-  .mobile-tabbar button {
-    min-height: 58px;
-    border: 0;
-    background: transparent;
-    color: var(--muted);
-    font-size: 12px;
-  }
-
-  .mobile-tabbar button.active {
-    color: var(--blue);
-    font-weight: 800;
+    display: none;
   }
 }
 
@@ -3683,26 +3660,29 @@ button {
   background: rgba(47,117,237,0.08); border-radius: 4px; pointer-events: none;
 }
 
-/* 畫布自由文字框（可拉邊框調整大小） */
+/* 畫布自由文字框：純白圓角方框，無上方橫槓 */
 .note-textbox {
-  position: absolute; z-index: 6; display: flex; flex-direction: column;
-  background: #fffef7; border: 1px solid var(--line); border-radius: 10px;
+  position: absolute; z-index: 6; cursor: grab;
+  background: #ffffff; border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 6px 20px rgba(23,31,56,0.16);
 }
+.note-textbox.editing { cursor: default; }
+.note-textbox.dragging { cursor: grabbing; }
 .note-textbox.dragging, .note-textbox.resizing { z-index: 12; box-shadow: 0 14px 34px rgba(47,117,237,0.26); }
-.note-textbox-bar {
-  display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto;
-  padding: 3px 6px; background: rgba(23,31,56,0.05); cursor: grab; user-select: none;
-  border-radius: 10px 10px 0 0;
+/* 滑鼠移入 → 框「外」左上方紅色小垃圾桶（同上傳文件的刪除，不擋到字） */
+.note-textbox-del {
+  position: absolute; top: -32px; left: 0; z-index: 4; display: none; place-items: center;
+  width: 26px; height: 26px; border: 1px solid var(--line); background: rgba(255,255,255,0.97);
+  color: var(--danger); border-radius: 7px; cursor: pointer; box-shadow: 0 2px 8px rgba(23,31,56,0.14);
 }
-.note-textbox.dragging .note-textbox-bar { cursor: grabbing; }
-.note-textbox-grip { display: inline-grid; place-items: center; color: var(--muted); opacity: 0.55; }
-.note-textbox-del { display: grid; place-items: center; width: 22px; height: 22px; border: none; background: none; color: var(--muted); border-radius: 6px; cursor: pointer; }
-.note-textbox-del:hover { color: var(--danger); background: rgba(239,87,87,0.1); }
+.note-textbox:hover .note-textbox-del { display: grid; }
+.note-textbox-del:hover { border-color: var(--danger); background: #fff; }
 .note-textbox-input {
-  flex: 1; width: 100%; min-height: 0; border: none; background: transparent;
-  padding: 8px 10px; font: inherit; font-size: 14px; line-height: 1.5; color: var(--text); resize: none; outline: none;
+  width: 100%; height: 100%; box-sizing: border-box; border: none; background: transparent;
+  padding: 10px 12px; font: inherit; font-size: 14px; line-height: 1.5; color: var(--text);
+  resize: none; outline: none; pointer-events: none;
 }
+.note-textbox.editing .note-textbox-input { pointer-events: auto; }
 
 /* 8 個縮放控點 */
 .note-resize-handle { position: absolute; width: 12px; height: 12px; z-index: 3; }
@@ -3720,3 +3700,272 @@ button {
 .rh-s  { left: 50%; bottom: -6px; transform: translateX(-50%); cursor: ns-resize; }
 .rh-sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
 .rh-w  { left: -6px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+
+/* ── 收藏頁：來源分頁（課程 / YouTube）────────────────────────── */
+.favorites-tabs {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  margin: 4px 0 18px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.favorites-tab {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.favorites-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(23, 31, 56, 0.06);
+}
+
+/* ── 複習頁 ──────────────────────────────────────────────────── */
+.review-page {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.review-header h1 {
+  margin: 0 0 4px;
+  color: var(--text);
+}
+.review-header p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+.review-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.review-stat {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--blue-soft);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.review-stat.muted {
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+.review-progress {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+.review-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 32px 28px;
+  text-align: center;
+}
+.review-card-badges {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.review-card-term {
+  font-size: 34px;
+  margin: 8px 0 6px;
+  color: var(--text);
+}
+.review-card-romaji {
+  color: var(--blue);
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+.review-card-reading {
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.review-card-context {
+  color: var(--muted);
+  font-style: italic;
+  margin: 10px auto;
+  max-width: 90%;
+}
+.review-card-source {
+  margin: 12px 0;
+}
+.review-video-link {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: none;
+}
+.review-video-link:hover {
+  text-decoration: underline;
+}
+.review-audio {
+  margin: 8px auto 0;
+}
+.review-card-back {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--line);
+}
+.review-card-answer {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--green);
+  margin: 0;
+}
+.review-actions {
+  margin-top: 24px;
+}
+.review-flip {
+  min-width: 200px;
+}
+.review-grades {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.review-grade {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+}
+.review-grade:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.review-grade-again { background: var(--danger); }
+.review-grade-hard  { background: var(--amber); }
+.review-grade-good  { background: var(--blue); }
+.review-grade-easy  { background: var(--green); }
+.review-done {
+  text-align: center;
+}
+.review-done-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+@media (max-width: 520px) {
+  .review-grades { grid-template-columns: repeat(2, 1fr); }
+  .review-card-term { font-size: 28px; }
+}
+
+/* ── 進度分析頁 ──────────────────────────────────────────────── */
+.analytics-page { max-width: 900px; margin: 0 auto; }
+.analytics-header h1 { margin: 0 0 4px; color: var(--text); }
+.analytics-header p { margin: 0 0 18px; color: var(--muted); }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.stat-tile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.stat-value { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.1; }
+.stat-label { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 6px; }
+.stat-hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.analytics-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+.analytics-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.analytics-card-head h2 { font-size: 16px; margin: 0; color: var(--text); }
+.analytics-card-sub { font-size: 12px; color: var(--muted); }
+
+.analytics-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.analytics-two-col .analytics-card { margin-bottom: 0; }
+
+.chart-scroll { overflow-x: auto; }
+.chart-axis-text { fill: var(--muted); font-size: 10px; }
+.chart-end-label { fill: var(--text); font-size: 12px; font-weight: 700; }
+
+.heatmap-svg { min-width: 300px; max-width: 100%; height: auto; display: block; }
+.heat-legend { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; }
+.heat-legend-box { width: 13px; height: 13px; border-radius: 3px; display: inline-block; }
+
+.bar-chart { display: flex; flex-direction: column; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: 52px 1fr 32px; align-items: center; gap: 8px; }
+.bar-name { font-size: 13px; color: var(--text); }
+.bar-track { background: var(--surface-soft); border-radius: 999px; height: 12px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; min-width: 2px; }
+.bar-value { font-size: 13px; font-weight: 700; color: var(--text); text-align: right; }
+
+.state-block { display: flex; flex-direction: column; gap: 12px; }
+.state-bar { display: flex; height: 16px; border-radius: 999px; overflow: hidden; background: var(--surface-soft); gap: 2px; }
+.state-seg { height: 100%; }
+.state-empty { width: 100%; }
+.state-legend { display: flex; flex-wrap: wrap; gap: 12px; }
+.state-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); }
+.state-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.growth-svg { width: 100%; min-width: 320px; height: auto; display: block; }
+
+@media (max-width: 640px) {
+  .analytics-two-col { grid-template-columns: 1fr; }
+}
+
+/* ── YouTube 收藏卡：精緻灰色操作鈕（跳回影片 / 播放）───────────── */
+.cap-actions { gap: 8px; }
+.cap-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.cap-action:hover { background: #e9eef7; }
+.cap-action svg { width: 15px; height: 15px; flex: none; }
+
+/* 複習頁「播放發音」鈕：icon + 文字置中對齊 */
+.review-audio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.review-audio svg { width: 16px; height: 16px; flex: none; }

@@ -20,20 +20,56 @@ async def sentence_exists(conn: asyncpg.Connection, sentence_id: str) -> bool:
     return row is not None
 
 
+async def _upsert_srs_card(
+    conn: asyncpg.Connection,
+    user_id: UUID,
+    item_type: str,
+    item_id: str,
+) -> None:
+    """收藏課程內容 → 自動排入 SRS。已存在則保留原有複習進度（DO NOTHING）。"""
+    await conn.execute(
+        """
+        INSERT INTO srs_cards (user_id, item_type, item_id, state, due)
+        VALUES ($1, $2, $3, 0, now())
+        ON CONFLICT (user_id, item_type, item_id) DO NOTHING
+        """,
+        user_id,
+        item_type,
+        item_id,
+    )
+
+
+async def _delete_srs_card(
+    conn: asyncpg.Connection,
+    user_id: UUID,
+    item_type: str,
+    item_id: str,
+) -> None:
+    await conn.execute(
+        "DELETE FROM srs_cards WHERE user_id = $1 AND item_type = $2 AND item_id = $3",
+        user_id,
+        item_type,
+        item_id,
+    )
+
+
 async def save_vocabulary(
     conn: asyncpg.Connection,
     user_id: UUID,
     vocabulary_id: str,
 ) -> asyncpg.Record:
-    return await conn.fetchrow(
-        """
-        INSERT INTO user_saved_vocabulary (user_id, vocabulary_id)
-        VALUES ($1, $2)
-        RETURNING id, vocabulary_id, created_at
-        """,
-        user_id,
-        vocabulary_id,
-    )
+    async with conn.transaction():
+        row = await conn.fetchrow(
+            """
+            INSERT INTO user_saved_vocabulary (user_id, vocabulary_id)
+            VALUES ($1, $2)
+            RETURNING id, vocabulary_id, created_at
+            """,
+            user_id,
+            vocabulary_id,
+        )
+        await _upsert_srs_card(conn, user_id, "vocabulary", vocabulary_id)
+    return row
 
 
 async def save_sentence(
@@ -41,15 +77,18 @@ async def save_sentence(
     user_id: UUID,
     sentence_id: str,
 ) -> asyncpg.Record:
-    return await conn.fetchrow(
-        """
-        INSERT INTO user_saved_sentences (user_id, sentence_id)
-        VALUES ($1, $2)
-        RETURNING id, sentence_id, created_at
-        """,
-        user_id,
-        sentence_id,
-    )
+    async with conn.transaction():
+        row = await conn.fetchrow(
+            """
+            INSERT INTO user_saved_sentences (user_id, sentence_id)
+            VALUES ($1, $2)
+            RETURNING id, sentence_id, created_at
+            """,
+            user_id,
+            sentence_id,
+        )
+        await _upsert_srs_card(conn, user_id, "sentence", sentence_id)
+    return row
 
 
 async def delete_saved_vocabulary(
@@ -57,15 +96,19 @@ async def delete_saved_vocabulary(
     user_id: UUID,
     vocabulary_id: str,
 ) -> bool:
-    result = await conn.execute(
-        """
-        DELETE FROM user_saved_vocabulary
-        WHERE user_id = $1 AND vocabulary_id = $2
-        """,
-        user_id,
-        vocabulary_id,
-    )
-    return result.endswith("1")
+    async with conn.transaction():
+        result = await conn.execute(
+            """
+            DELETE FROM user_saved_vocabulary
+            WHERE user_id = $1 AND vocabulary_id = $2
+            """,
+            user_id,
+            vocabulary_id,
+        )
+        if result.endswith("1"):
+            await _delete_srs_card(conn, user_id, "vocabulary", vocabulary_id)
+            return True
+    return False
 
 
 async def delete_saved_sentence(
@@ -73,15 +116,19 @@ async def delete_saved_sentence(
     user_id: UUID,
     sentence_id: str,
 ) -> bool:
-    result = await conn.execute(
-        """
-        DELETE FROM user_saved_sentences
-        WHERE user_id = $1 AND sentence_id = $2
-        """,
-        user_id,
-        sentence_id,
-    )
-    return result.endswith("1")
+    async with conn.transaction():
+        result = await conn.execute(
+            """
+            DELETE FROM user_saved_sentences
+            WHERE user_id = $1 AND sentence_id = $2
+            """,
+            user_id,
+            sentence_id,
+        )
+        if result.endswith("1"):
+            await _delete_srs_card(conn, user_id, "sentence", sentence_id)
+            return True
+    return False
 
 
 async def delete_saved_by_id(
@@ -89,26 +136,33 @@ async def delete_saved_by_id(
     user_id: UUID,
     saved_id: UUID,
 ) -> bool:
-    deleted_vocab = await conn.execute(
-        """
-        DELETE FROM user_saved_vocabulary
-        WHERE user_id = $1 AND id = $2
-        """,
-        user_id,
-        saved_id,
-    )
-    if deleted_vocab.endswith("1"):
-        return True
+    async with conn.transaction():
+        deleted_vocab = await conn.fetchrow(
+            """
+            DELETE FROM user_saved_vocabulary
+            WHERE user_id = $1 AND id = $2
+            RETURNING vocabulary_id
+            """,
+            user_id,
+            saved_id,
+        )
+        if deleted_vocab is not None:
+            await _delete_srs_card(conn, user_id, "vocabulary", deleted_vocab["vocabulary_id"])
+            return True
 
-    deleted_sentence = await conn.execute(
-        """
-        DELETE FROM user_saved_sentences
-        WHERE user_id = $1 AND id = $2
-        """,
-        user_id,
-        saved_id,
-    )
-    return deleted_sentence.endswith("1")
+        deleted_sentence = await conn.fetchrow(
+            """
+            DELETE FROM user_saved_sentences
+            WHERE user_id = $1 AND id = $2
+            RETURNING sentence_id
+            """,
+            user_id,
+            saved_id,
+        )
+        if deleted_sentence is not None:
+            await _delete_srs_card(conn, user_id, "sentence", deleted_sentence["sentence_id"])
+            return True
+    return False
 
 
 async def list_saved_vocabulary(

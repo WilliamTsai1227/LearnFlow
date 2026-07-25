@@ -334,19 +334,22 @@ function renderNotesView() {
   applyTransform();
   updateToolUI();
 
+  // 注意：載入中/錯誤/空狀態訊息要掛在 stage（撐滿畫面、無縮放）上，
+  // 不能掛在 pages（#notePages 本身 width:0/height:0，且被套用 pan/zoom transform，
+  // 會成為子元素的新定位基準，導致 inset:0 收縮成 0×0，文字被迫逐字換行）。
   if (notesState.loading) {
-    pages.appendChild(el("div", "notes-center", "載入文件中…"));
+    stage.appendChild(el("div", "notes-center", "載入文件中…"));
   } else if (notesState.error) {
     const box = el("div", "notes-center");
     box.appendChild(el("h2", null, "無法載入筆記"));
     box.appendChild(el("p", "muted", notesState.error));
-    pages.appendChild(box);
+    stage.appendChild(box);
   } else if (!notesState.docs.length && !notesState.texts.length) {
     const empty = el("div", "notes-center notes-empty");
     empty.appendChild(createSvgIcon(["M12 5v14", "M5 12h14"], 34));
     empty.appendChild(el("h2", null, "把 PDF / Word 拖進來"));
     empty.appendChild(el("p", "muted", "或點右上角「上傳文件」，也可用下方「T」在畫布任一處新增文字框。"));
-    pages.appendChild(empty);
+    stage.appendChild(empty);
   } else {
     paintAllDocs();
   }
@@ -578,28 +581,26 @@ function buildTextBox(t) {
   box.style.width = `${t.canvas_w || 200}px`;
   box.style.height = `${t.canvas_h || 100}px`;
 
-  const bar = el("div", "note-textbox-bar");
-  bar.title = "拖曳可移動這個文字框";
-  const grip = el("span", "note-textbox-grip");
-  grip.appendChild(createSvgIcon(["M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01"], 12));
-  bar.appendChild(grip);
+  // 左上角紅色小垃圾桶（滑鼠移入才顯示，同上傳文件）
   const del = el("button", "note-textbox-del");
   del.type = "button";
   del.title = "刪除文字框";
-  del.appendChild(createSvgIcon(["M18 6 6 18", "M6 6l12 12"], 13));
+  del.setAttribute("aria-label", "刪除文字框");
+  del.appendChild(createSvgIcon(["M3 6h18", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"], 13));
+  del.addEventListener("mousedown", (e) => e.stopPropagation());
   del.addEventListener("click", (e) => {
     e.stopPropagation();
     removeText(t.id);
   });
-  bar.appendChild(del);
-  bar.addEventListener("mousedown", (e) => startTextDrag(e, t, box));
-  box.appendChild(bar);
+  box.appendChild(del);
 
   const ta = el("textarea", "note-textbox-input");
   ta.value = t.body || "";
   ta.placeholder = "輸入文字…";
-  ta.addEventListener("mousedown", (e) => e.stopPropagation());
-  ta.addEventListener("blur", () => saveTextBody(t, ta.value));
+  ta.addEventListener("blur", () => {
+    box.classList.remove("editing");
+    saveTextBody(t, ta.value);
+  });
   box.appendChild(ta);
 
   // 8 個縮放控點
@@ -610,11 +611,34 @@ function buildTextBox(t) {
     box.appendChild(h);
   });
 
+  // 按住拖曳＝移動；放開時若沒移動＝進入編輯（不需要上方把手）
+  box.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest(".note-textbox-del") || e.target.closest(".note-resize-handle")) return;
+    if (box.classList.contains("editing") && e.target === ta) return;
+    e.preventDefault();
+    _draggingText = {
+      t,
+      el: box,
+      ta,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: t.canvas_x || 0,
+      origY: t.canvas_y || 0,
+      moved: false,
+    };
+  });
+
   if (t._editing) {
     t._editing = false;
-    requestAnimationFrame(() => ta.focus());
+    requestAnimationFrame(() => enterTextEdit(box, ta));
   }
   return box;
+}
+
+function enterTextEdit(box, ta) {
+  box.classList.add("editing");
+  ta.focus();
 }
 
 // T 工具：在畫布上拉出一個任意大小的方框 → 放開後成為可打字的文字框
@@ -692,21 +716,6 @@ function startTextResize(e, t, box, dir) {
   box.classList.add("resizing");
 }
 
-function startTextDrag(e, t, box) {
-  if (e.button !== 0) return;
-  if (e.target.closest(".note-textbox-del")) return;
-  e.preventDefault();
-  e.stopPropagation();
-  _draggingText = {
-    t,
-    el: box,
-    startX: e.clientX,
-    startY: e.clientY,
-    origX: t.canvas_x || 0,
-    origY: t.canvas_y || 0,
-  };
-  box.classList.add("dragging");
-}
 
 async function saveTextBody(t, body) {
   const trimmed = body.trim();
@@ -1249,8 +1258,15 @@ function wireGlobalOnce() {
     }
     if (_draggingText) {
       const z = notesState.zoom || 1;
-      const nx = _draggingText.origX + (e.clientX - _draggingText.startX) / z;
-      const ny = _draggingText.origY + (e.clientY - _draggingText.startY) / z;
+      const dx = e.clientX - _draggingText.startX;
+      const dy = e.clientY - _draggingText.startY;
+      if (!_draggingText.moved) {
+        if (Math.hypot(dx, dy) < 4) return; // 還沒超過門檻，先不當拖曳
+        _draggingText.moved = true;
+        _draggingText.el.classList.add("dragging");
+      }
+      const nx = _draggingText.origX + dx / z;
+      const ny = _draggingText.origY + dy / z;
       _draggingText.t.canvas_x = nx;
       _draggingText.t.canvas_y = ny;
       _draggingText.el.style.left = `${nx}px`;
@@ -1303,8 +1319,10 @@ function wireGlobalOnce() {
       return;
     }
     if (_draggingText) {
-      _draggingText.el.classList.remove("dragging");
-      saveTextGeometry(_draggingText.t);
+      const d = _draggingText;
+      d.el.classList.remove("dragging");
+      if (d.moved) saveTextGeometry(d.t);
+      else enterTextEdit(d.el, d.ta); // 只是點一下 → 進入編輯
       _draggingText = null;
       return;
     }

@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "LearnFlow — YouTube 沈浸式學習",
+  "version": "0.1.0",
+  "description": "在 YouTube 字幕點單字看 AI 翻譯並收藏到 LearnFlow，回平台走 FSRS 複習曲線。",
+  "permissions": ["storage", "cookies"],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://localhost:8002/*",
+    "http://127.0.0.1/*",
+    "https://*/*",
+    "*://*.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "LearnFlow"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
