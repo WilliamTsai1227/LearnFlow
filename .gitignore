@@ -29,3 +29,5 @@ app/frontend/audio/**/*.tmp
 # 使用者上傳的筆記檔（不進版控）
 app/backend/uploads/**
 !app/backend/uploads/.gitkeep
+
+.claude/settings.local.json
