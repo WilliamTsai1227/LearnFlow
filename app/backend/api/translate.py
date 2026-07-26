@@ -1,8 +1,17 @@
 """
 翻譯 API — 點擊字幕單字時的即時翻譯（免費資源 + DB 快取）
 =========================================================
-需 Bearer JWT。先查 translation_cache，未命中才呼叫免費線上資源並寫回快取，
-確保同一 (詞, 語言對) 只查一次，也降低對免費 API 的請求量。
+需 Bearer JWT。
+
+兩種請求，行為不同：
+  1. 整句翻譯（term == context_sentence，或無 context_sentence）
+     → 先查 translation_cache，未命中才查免費資源並寫回快取。
+  2. 單字在句中的翻譯（term != context_sentence）
+     → 以單字周圍一小段上下文組成查詢送給 MyMemory，讓翻譯引擎有語境可判斷，
+       避免單獨翻一個字時脫離句意（例如 "go" 單獨查是「去」，但在
+       "Shall we go now?" 裡應該偏向「走」）。
+     → 這種查詢結果**不進 translation_cache**（key 只有 term，若快取住某次的
+       上下文翻譯，會被錯誤套用到未來其他句子裡出現的同一個字）。
 
 使用的免費資源（皆免金鑰）：
   - 翻譯文字：MyMemory Translation API（任意語言對，含 ja→zh-TW / en→zh-TW）
@@ -11,6 +20,8 @@
 """
 
 import json
+import os
+import re
 from typing import Optional
 
 import asyncpg
@@ -31,6 +42,10 @@ _SRC_CODE = {"japanese": "ja", "english": "en"}
 _MYMEMORY_URL = "https://api.mymemory.translated.net/get"
 _JISHO_URL = "https://jisho.org/api/v1/search/words"
 _HTTP_TIMEOUT = 8.0
+
+# MyMemory 免費額度：匿名 5,000 字元/日；帶上有效 email（de 參數）提升為 50,000 字元/日。
+# 常駐雙字幕會逐句翻譯，額度消耗快，務必設定此環境變數。留空則自動退回匿名額度。
+_MYMEMORY_EMAIL = os.getenv("MYMEMORY_EMAIL", "").strip()
 
 
 class TranslateRequest(BaseModel):
@@ -53,10 +68,11 @@ async def _mymemory_translate(term: str, src: str, tgt: str) -> str:
     """免費 MyMemory 翻譯；zh-TW 失敗時退回 zh。"""
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         for target in (tgt, "zh") if tgt.lower().startswith("zh") and tgt != "zh" else (tgt,):
+            params = {"q": term, "langpair": f"{src}|{target}"}
+            if _MYMEMORY_EMAIL:
+                params["de"] = _MYMEMORY_EMAIL
             try:
-                resp = await client.get(
-                    _MYMEMORY_URL, params={"q": term, "langpair": f"{src}|{target}"}
-                )
+                resp = await client.get(_MYMEMORY_URL, params=params)
                 resp.raise_for_status()
                 data = resp.json()
             except (httpx.HTTPError, json.JSONDecodeError):
@@ -88,12 +104,46 @@ async def _jisho_reading(term: str) -> Optional[str]:
     return None
 
 
-async def _lookup(body: TranslateRequest) -> dict:
+def _context_window(term: str, sentence: str, language: str) -> Optional[str]:
+    """
+    單字在句子中的翻譯查詢：截取單字周圍一小段上下文（不是整句、也不是孤立單字），
+    讓 MyMemory 有語境可以判斷字義，同時不會因為整句太長而失焦。
+    找不到單字在句中的位置，或本來就沒有獨立句子（term == sentence）時回傳 None，
+    呼叫端據此判斷要不要走「無上下文」的原本快取路徑。
+    """
+    term = term.strip()
+    sentence = sentence.strip()
+    if not term or not sentence or term == sentence:
+        return None
+
+    if language == "english":
+        tokens = re.findall(r"\S+", sentence)
+        target = re.sub(r"^\W+|\W+$", "", term).lower()
+        for i, tok in enumerate(tokens):
+            if re.sub(r"^\W+|\W+$", "", tok).lower() == target:
+                window = " ".join(tokens[max(0, i - 2) : min(len(tokens), i + 3)])
+                return window if window.lower() != term.lower() else sentence
+        return sentence  # 找不到精確詞邊界，退回整句給 MyMemory 判斷
+
+    # 日文等無空白斷詞語言：用字元位置抓單字前後各 6 個字當上下文
+    idx = sentence.find(term)
+    if idx == -1:
+        return sentence
+    window = sentence[max(0, idx - 6) : min(len(sentence), idx + len(term) + 6)]
+    return window if window != term else sentence
+
+
+async def _lookup(body: TranslateRequest, query_text: Optional[str] = None) -> dict:
+    """
+    翻譯查詢：預設翻 body.term 本身（整句路徑，結果會進快取）；
+    傳入 query_text 時改翻該段文字（單字上下文小段，呼叫端不會快取結果），
+    但讀音／羅馬拼音一律以 body.term 為準（term 是使用者實際點的字）。
+    """
     src = _SRC_CODE.get(body.source_language.value)
     if not src:
         raise HTTPException(status_code=400, detail="Unsupported source language")
 
-    translation = await _mymemory_translate(body.term, src, body.target_language)
+    translation = await _mymemory_translate(query_text or body.term, src, body.target_language)
 
     reading: Optional[str] = None
     romaji: Optional[str] = None
@@ -116,6 +166,13 @@ async def translate(
     current_user: asyncpg.Record = Depends(get_current_user),
     db: asyncpg.Connection = Depends(get_db),
 ):
+    # 單字在句中的翻譯：以上下文小段即時查詢，不進快取（見檔案開頭說明）
+    window = _context_window(body.term, body.context_sentence or "", body.source_language.value)
+    if window is not None:
+        payload = await _lookup(body, query_text=window)
+        return TranslateResponse(term=body.term, cached=False, **payload)
+
+    # 整句翻譯（或無句子上下文）：走原本的快取路徑
     # 1. 查快取
     cached = await db.fetchrow(
         """

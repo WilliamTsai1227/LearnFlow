@@ -5,11 +5,58 @@
  */
 
 (function () {
-  let settings = { apiBase: "http://localhost", targetLanguage: "zh-TW", sourceLanguage: "japanese" };
+  // ── 設定 ──────────────────────────────────────────────────
+  // content script 可直接讀寫 chrome.storage.local，不必繞 background；
+  // 監聽 onChanged 讓 popup 與播放器內設定面板兩邊即時同步。
+  const DEFAULT_SETTINGS = {
+    apiBase: "http://localhost",
+    targetLanguage: "zh-TW",
+    sourceLanguage: "japanese",
+    enabled: true,
+    showSubtitleTranslation: true,
+    hoverPause: false,
+    captionScale: 100,
+  };
+  let settings = { ...DEFAULT_SETTINGS };
 
-  chrome.runtime.sendMessage({ action: "getSettings" }, (resp) => {
-    if (resp && resp.ok) settings = resp.data;
-  });
+  function loadSettings() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS), (cfg) => {
+          settings = { ...DEFAULT_SETTINGS, ...(cfg || {}) };
+          if (settings.apiBase) settings.apiBase = String(settings.apiBase).replace(/\/$/, "");
+          resolve(settings);
+        });
+      } catch (err) {
+        resolve(settings); // context 失效：用預設值，稍後提示重整
+      }
+    });
+  }
+
+  function saveSetting(key, value) {
+    settings[key] = value;
+    try {
+      chrome.storage.local.set({ [key]: value });
+    } catch (err) {
+      if (isContextInvalidated(err)) handleContextInvalidated();
+    }
+  }
+
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+      let touched = false;
+      for (const k of Object.keys(changes)) {
+        if (k in DEFAULT_SETTINGS) {
+          settings[k] = changes[k].newValue;
+          touched = true;
+        }
+      }
+      if (touched) applySettings();
+    });
+  } catch (err) {
+    /* context 失效，忽略 */
+  }
 
   // ── 影片資訊 ──────────────────────────────────────────────
   function getVideoId() {
@@ -258,15 +305,47 @@
     }
   }
 
+  // 擴充被重新載入（chrome://extensions 按 reload）後，舊分頁裡殘留的 content script
+  // 會與已被替換的擴充失去連線，呼叫 chrome.runtime.* 會「同步拋出」
+  // Extension context invalidated。這裡統一攔下來，提示使用者重整分頁，
+  // 而不是讓未捕捉的錯誤一直噴。
+  let contextInvalidated = false;
+
+  function isContextInvalidated(err) {
+    return /Extension context invalidated|Receiving end does not exist|message port closed/i.test(
+      String((err && err.message) || err || ""),
+    );
+  }
+
+  function handleContextInvalidated() {
+    if (contextInvalidated) return;
+    contextInvalidated = true;
+    hideOverlay();
+    hideCard();
+    showPlayerToast("LearnFlow 已更新，請重新整理此分頁以繼續使用");
+  }
+
   function sendMessage(msg) {
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage(msg, (resp) => {
-        if (chrome.runtime.lastError) {
-          resolve({ ok: false, error: chrome.runtime.lastError.message });
-        } else {
-          resolve(resp);
-        }
-      });
+      if (contextInvalidated) {
+        resolve({ ok: false, error: "擴充已更新，請重新整理分頁" });
+        return;
+      }
+      try {
+        chrome.runtime.sendMessage(msg, (resp) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            if (isContextInvalidated(err)) handleContextInvalidated();
+            resolve({ ok: false, error: err.message });
+          } else {
+            resolve(resp);
+          }
+        });
+      } catch (err) {
+        // context 失效時是同步拋出，callback 不會被呼叫
+        if (isContextInvalidated(err)) handleContextInvalidated();
+        resolve({ ok: false, error: (err && err.message) || String(err) });
+      }
     });
   }
 
@@ -354,10 +433,622 @@
     btn.disabled = false;
     if (resp && resp.ok) {
       setStatus("已收藏，已排入複習 ✓", "ok");
+      if (kind === "word") {
+        // 立即標記剛收藏的字（字幕上該詞會變成已收藏樣式）
+        savedTerms.add(normalizeTerm(cardState.term));
+        renderCaptionTokens(lastTranslatedText);
+      }
     } else {
       setStatus((resp && resp.error) || "收藏失敗", "error");
     }
   }
+
+  // ══════════════════════════════════════════════════════════
+  //  播放器內控制列：開啟／關閉 pill ＋ 齒輪設定
+  // ══════════════════════════════════════════════════════════
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function svgIcon(paths, size) {
+    const s = document.createElementNS(SVG_NS, "svg");
+    s.setAttribute("viewBox", "0 0 24 24");
+    s.setAttribute("width", String(size));
+    s.setAttribute("height", String(size));
+    s.setAttribute("fill", "none");
+    s.setAttribute("stroke", "currentColor");
+    s.setAttribute("stroke-width", "2");
+    s.setAttribute("stroke-linecap", "round");
+    s.setAttribute("stroke-linejoin", "round");
+    paths.forEach((d) => {
+      const p = document.createElementNS(SVG_NS, "path");
+      p.setAttribute("d", d);
+      s.appendChild(p);
+    });
+    return s;
+  }
+
+  function gearIcon() {
+    const s = svgIcon(
+      [
+        "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z",
+      ],
+      15,
+    );
+    const c = document.createElementNS(SVG_NS, "circle");
+    c.setAttribute("cx", "12");
+    c.setAttribute("cy", "12");
+    c.setAttribute("r", "3");
+    s.appendChild(c);
+    return s;
+  }
+
+  function updatePill() {
+    const pill = document.getElementById("lf-toggle");
+    if (!pill) return;
+    pill.classList.toggle("lf-on", !!settings.enabled);
+    pill.title = `LearnFlow：${settings.enabled ? "開啟" : "關閉"}`;
+    const label = pill.querySelector(".lf-pill-text");
+    if (label) label.textContent = settings.enabled ? "開啟" : "關閉";
+  }
+
+  function injectPlayerControls() {
+    const rightControls = document.querySelector("#movie_player .ytp-right-controls");
+    if (!rightControls || document.getElementById("lf-toggle")) return;
+
+    const pill = document.createElement("button");
+    pill.id = "lf-toggle";
+    pill.className = "ytp-button lf-pill";
+    const dot = document.createElement("span");
+    dot.className = "lf-pill-dot";
+    const text = document.createElement("span");
+    text.className = "lf-pill-text";
+    pill.appendChild(dot);
+    pill.appendChild(text);
+    pill.addEventListener("click", (e) => {
+      e.stopPropagation();
+      saveSetting("enabled", !settings.enabled);
+      applySettings();
+    });
+
+    const gear = document.createElement("button");
+    gear.id = "lf-gear";
+    gear.className = "ytp-button lf-gear";
+    gear.title = "LearnFlow 設定";
+    gear.appendChild(gearIcon());
+    gear.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openSettingsModal();
+    });
+
+    rightControls.insertBefore(gear, rightControls.firstChild);
+    rightControls.insertBefore(pill, rightControls.firstChild);
+    updatePill();
+  }
+
+  // YouTube 是 SPA：換影片時播放器 DOM 會被重建，按鈕會不見。
+  // 用 observer 持續確保按鈕存在（比監聽 yt-navigate-finish 可靠）。
+  // YouTube 每秒會產生大量 DOM 變動，因此節流成最多每 500ms 檢查一次，避免卡頓。
+  let rescanQueued = false;
+  function queueRescan() {
+    if (rescanQueued) return;
+    rescanQueued = true;
+    setTimeout(() => {
+      rescanQueued = false;
+      injectPlayerControls();
+      attachCaptionObserver();
+    }, 500);
+  }
+
+  function watchPlayerControls() {
+    injectPlayerControls();
+    const obs = new MutationObserver(queueRescan);
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  斷詞（把字幕拆成一個個可點的單字）
+  //  日文：TinySegmenter（vendor/，BSD）——Chrome 內建 Intl.Segmenter 對日文會
+  //        過度切分（もらった→も|ら|っ|た），對學習者沒用，故改用它。
+  //  英文：Intl.Segmenter（原生，正確處理縮寫如 don't），失敗才退回空白切分。
+  // ══════════════════════════════════════════════════════════
+  let jaSegmenter = null;
+  let enSegmenter = null;
+
+  function tokenize(text, language) {
+    if (!text) return [];
+    try {
+      if (language === "japanese") {
+        if (!jaSegmenter && typeof TinySegmenter === "function") {
+          jaSegmenter = new TinySegmenter();
+        }
+        if (jaSegmenter) return jaSegmenter.segment(text).filter((t) => t.trim());
+      } else {
+        if (!enSegmenter && typeof Intl !== "undefined" && Intl.Segmenter) {
+          enSegmenter = new Intl.Segmenter(language === "english" ? "en" : undefined, {
+            granularity: "word",
+          });
+        }
+        if (enSegmenter) {
+          return [...enSegmenter.segment(text)]
+            .map((s) => s.segment)
+            .filter((t) => t.trim());
+        }
+      }
+    } catch (err) {
+      /* 落到下方退路 */
+    }
+    // 退路：英文用空白切、日文整句一塊（至少不會壞掉）
+    return language === "japanese" ? [text] : text.split(/\s+/).filter(Boolean);
+  }
+
+  // 只有「像詞」的 token 才可點（標點、純空白不可點）
+  function isWordLike(token) {
+    return /[\p{L}\p{N}]/u.test(token);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  已收藏單字標記（對應截圖中被框起來的字）
+  // ══════════════════════════════════════════════════════════
+  let savedTerms = new Set();
+
+  function normalizeTerm(t) {
+    return String(t || "").trim().toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+  }
+
+  async function loadSavedTerms() {
+    const resp = await sendMessage({ action: "listCaptures" });
+    if (resp && resp.ok && Array.isArray(resp.data)) {
+      savedTerms = new Set(
+        resp.data.filter((c) => c.kind === "word").map((c) => normalizeTerm(c.term)),
+      );
+      renderCaptionTokens(lastTranslatedText);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  雙字幕覆蓋層
+  // ══════════════════════════════════════════════════════════
+  const CAPTION_CONTAINER = ".ytp-caption-window-container";
+  let subOverlay = null;
+  let captionObserver = null;
+  let observedContainer = null;
+  let debounceTimer = null;
+  let lastTranslatedText = "";
+  let translateFailures = 0;
+  let subtitlesDisabledForSession = false;
+  const lineCache = new Map(); // session 內第二層快取，DB 快取之外再擋一次
+
+  let tokenRow = null;
+  let translationRow = null;
+
+  function ensureOverlay() {
+    const player = document.querySelector("#movie_player");
+    if (!player) return null;
+    if (subOverlay && subOverlay.parentElement === player) return subOverlay;
+    subOverlay = document.createElement("div");
+    subOverlay.id = "lf-sub-overlay";
+    // 懸停暫停也要涵蓋覆蓋層
+    subOverlay.addEventListener("mouseenter", onCaptionEnter);
+    subOverlay.addEventListener("mouseleave", onCaptionLeave);
+
+    tokenRow = document.createElement("div");
+    tokenRow.className = "lf-tokens";
+    translationRow = document.createElement("div");
+    translationRow.className = "lf-sub-tr";
+    subOverlay.appendChild(tokenRow);
+    subOverlay.appendChild(translationRow);
+
+    player.appendChild(subOverlay);
+    return subOverlay;
+  }
+
+  // 把字幕拆成一顆顆可點的單字（截圖中每個字都被框起來的效果）
+  function renderCaptionTokens(text) {
+    if (!tokenRow || !text) return;
+    tokenRow.textContent = "";
+    tokenize(text, settings.sourceLanguage).forEach((tok) => {
+      if (!isWordLike(tok)) {
+        // 標點：跟在前一個詞後面，不做成可點的框
+        const punct = document.createElement("span");
+        punct.className = "lf-punct";
+        punct.textContent = tok;
+        tokenRow.appendChild(punct);
+        return;
+      }
+      const chip = document.createElement("span");
+      chip.className = "lf-token";
+      if (savedTerms.has(normalizeTerm(tok))) chip.classList.add("lf-token-saved");
+      chip.textContent = tok;
+      chip.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // 直接用斷好的詞，不再靠游標位置去猜詞邊界
+        openCard(tok, text, e.clientX, e.clientY);
+      });
+      tokenRow.appendChild(chip);
+    });
+  }
+
+  function hideOverlay() {
+    if (subOverlay) subOverlay.style.display = "none";
+    const player = document.querySelector("#movie_player");
+    if (player) player.classList.remove("lf-hide-native-cc");
+  }
+
+  // 覆蓋層取代原生字幕的位置（我們已把原文以可點單字重繪，原生字幕留著會重複）。
+  // 原生字幕用 opacity 隱藏而非 display:none —— 否則它的 boundingRect 會歸零，
+  // 我們就失去定位基準了。
+  function positionOverlay() {
+    const player = document.querySelector("#movie_player");
+    const container = document.querySelector(CAPTION_CONTAINER);
+    const ov = subOverlay;
+    if (!player || !container || !ov || ov.style.display === "none") return;
+
+    const pRect = player.getBoundingClientRect();
+    const cRect = container.getBoundingClientRect();
+    if (!cRect.height || !pRect.height) return;
+
+    const scale = (settings.captionScale || 100) / 100;
+    ov.style.fontSize = `${Math.round(16 * scale)}px`;
+
+    // 以「底部對齊原生字幕底部」定位：覆蓋層比原生高（多一行翻譯）時往上長，
+    // 不會往下撞到播放器控制列。
+    let bottom = pRect.height - (cRect.bottom - pRect.top);
+    const maxBottom = pRect.height - ov.offsetHeight - 8;
+    bottom = Math.max(8, Math.min(bottom, Math.max(8, maxBottom)));
+    ov.style.bottom = `${bottom}px`;
+  }
+
+  function currentCaptionText() {
+    const container = document.querySelector(CAPTION_CONTAINER);
+    if (!container) return "";
+    const lines = container.querySelectorAll(".caption-visual-line");
+    if (lines.length) {
+      return Array.from(lines)
+        .map((l) =>
+          Array.from(l.querySelectorAll(".ytp-caption-segment"))
+            .map((s) => s.textContent)
+            .join(""),
+        )
+        .join(" ")
+        .trim();
+    }
+    return Array.from(container.querySelectorAll(".ytp-caption-segment"))
+      .map((s) => s.textContent)
+      .join(" ")
+      .trim();
+  }
+
+  function subtitlesActive() {
+    return (
+      settings.enabled && settings.showSubtitleTranslation && !subtitlesDisabledForSession
+    );
+  }
+
+  async function translateCaptionLine(text) {
+    if (lineCache.has(text)) return lineCache.get(text);
+    // 整句翻譯：term === context_sentence，走後端「會寫入 translation_cache」的路徑
+    const resp = await sendMessage({
+      action: "translate",
+      payload: {
+        term: text,
+        context_sentence: text,
+        source_language: settings.sourceLanguage,
+        target_language: settings.targetLanguage,
+      },
+    });
+    if (resp && resp.ok) {
+      translateFailures = 0;
+      const tr = resp.data.translation || "";
+      lineCache.set(text, tr);
+      return tr;
+    }
+    translateFailures += 1;
+    // 連續失敗（多半是當日翻譯額度用盡）就停掉本次 session 的雙字幕，避免持續洗錯誤
+    if (translateFailures >= 3) {
+      subtitlesDisabledForSession = true;
+      showPlayerToast("字幕翻譯暫停：翻譯額度可能已用盡，重新整理可再試");
+      hideOverlay();
+    }
+    return null;
+  }
+
+  function onCaptionMutated() {
+    if (!subtitlesActive()) {
+      hideOverlay();
+      return;
+    }
+    clearTimeout(debounceTimer);
+    // YouTube 自動字幕是逐字增量更新的；停止變動 500ms 才視為整句定稿再翻譯，
+    // 否則同一句的每個中間狀態都會送出翻譯，額度會瞬間燒光。
+    debounceTimer = setTimeout(async () => {
+      const text = currentCaptionText();
+      if (!text) {
+        hideOverlay();
+        lastTranslatedText = "";
+        return;
+      }
+      if (text === lastTranslatedText) {
+        positionOverlay();
+        return;
+      }
+      lastTranslatedText = text;
+
+      // 先把可點的單字畫出來（不必等翻譯回來），翻譯稍後補上
+      const ov = ensureOverlay();
+      if (!ov) return;
+      renderCaptionTokens(text);
+      translationRow.textContent = "";
+      ov.style.display = "block";
+      const player = document.querySelector("#movie_player");
+      if (player) player.classList.add("lf-hide-native-cc");
+      positionOverlay();
+
+      const tr = await translateCaptionLine(text);
+      if (text !== lastTranslatedText || !subtitlesActive()) return;
+      translationRow.textContent = tr || "";
+      positionOverlay();
+    }, 500);
+  }
+
+  function attachCaptionObserver() {
+    const container = document.querySelector(CAPTION_CONTAINER);
+    if (!container) {
+      hideOverlay();
+      observedContainer = null;
+      return;
+    }
+    if (container === observedContainer) return;
+    // CC 開關時容器會被重建，需重新掛 observer
+    if (captionObserver) captionObserver.disconnect();
+    observedContainer = container;
+    captionObserver = new MutationObserver(onCaptionMutated);
+    captionObserver.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    container.addEventListener("mouseenter", onCaptionEnter);
+    container.addEventListener("mouseleave", onCaptionLeave);
+    onCaptionMutated();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  懸停自動暫停
+  // ══════════════════════════════════════════════════════════
+  let pausedByHover = false;
+  function onCaptionEnter() {
+    if (!settings.enabled || !settings.hoverPause) return;
+    const v = document.querySelector("video");
+    if (v && !v.paused) {
+      v.pause();
+      pausedByHover = true;
+    }
+  }
+  function onCaptionLeave() {
+    // 只有「我們暫停的」才續播，不覆蓋使用者自己按的暫停
+    if (!pausedByHover) return;
+    pausedByHover = false;
+    const v = document.querySelector("video");
+    if (v && v.paused) v.play().catch(() => {});
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  字幕大小 & 套用設定
+  // ══════════════════════════════════════════════════════════
+  function applySettings() {
+    const player = document.querySelector("#movie_player");
+    if (player) {
+      // YouTube 在 .ytp-caption-segment 上是 inline font-size，直接改會被蓋掉，
+      // 因此改用整塊 transform 縮放。
+      player.style.setProperty("--lf-caption-scale", String((settings.captionScale || 100) / 100));
+      player.classList.toggle("lf-scaled", (settings.captionScale || 100) !== 100);
+    }
+    updatePill();
+    if (!subtitlesActive()) hideOverlay();
+    else onCaptionMutated();
+    positionOverlay();
+    if (!settings.enabled) hideCard();
+  }
+
+  function showPlayerToast(msg) {
+    const player = document.querySelector("#movie_player");
+    if (!player) return;
+    const t = document.createElement("div");
+    t.className = "lf-toast";
+    t.textContent = msg;
+    player.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  設定 modal
+  // ══════════════════════════════════════════════════════════
+  let modal = null;
+
+  function modalHost() {
+    return document.fullscreenElement || document.body;
+  }
+
+  function row(label, hint) {
+    const r = document.createElement("div");
+    r.className = "lf-row";
+    const txt = document.createElement("div");
+    txt.className = "lf-row-text";
+    const l = document.createElement("div");
+    l.className = "lf-row-label";
+    l.textContent = label;
+    txt.appendChild(l);
+    if (hint) {
+      const h = document.createElement("div");
+      h.className = "lf-row-hint";
+      h.textContent = hint;
+      txt.appendChild(h);
+    }
+    r.appendChild(txt);
+    return r;
+  }
+
+  function toggleControl(key) {
+    const btn = document.createElement("button");
+    btn.className = "lf-switch";
+    const sync = () => btn.classList.toggle("on", !!settings[key]);
+    sync();
+    btn.addEventListener("click", () => {
+      saveSetting(key, !settings[key]);
+      sync();
+      applySettings();
+    });
+    return btn;
+  }
+
+  function selectControl(key, options) {
+    const sel = document.createElement("select");
+    sel.className = "lf-select";
+    options.forEach(([value, label]) => {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      sel.appendChild(o);
+    });
+    sel.value = settings[key];
+    sel.addEventListener("change", () => {
+      saveSetting(key, sel.value);
+      // 語言改變後，之前翻譯的內容不再適用
+      lineCache.clear();
+      lastTranslatedText = "";
+      applySettings();
+    });
+    return sel;
+  }
+
+  function stepperControl() {
+    const wrap = document.createElement("div");
+    wrap.className = "lf-stepper";
+    const dec = document.createElement("button");
+    dec.textContent = "−";
+    const val = document.createElement("span");
+    const inc = document.createElement("button");
+    inc.textContent = "+";
+    const sync = () => (val.textContent = `${settings.captionScale || 100}%`);
+    sync();
+    const step = (delta) => {
+      const next = Math.min(200, Math.max(75, (settings.captionScale || 100) + delta));
+      saveSetting("captionScale", next);
+      sync();
+      applySettings();
+    };
+    dec.addEventListener("click", () => step(-25));
+    inc.addEventListener("click", () => step(25));
+    wrap.appendChild(dec);
+    wrap.appendChild(val);
+    wrap.appendChild(inc);
+    return wrap;
+  }
+
+  function buildModal() {
+    const backdrop = document.createElement("div");
+    backdrop.id = "lf-modal-backdrop";
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) closeSettingsModal();
+    });
+
+    const box = document.createElement("div");
+    box.className = "lf-modal";
+    backdrop.appendChild(box);
+
+    const head = document.createElement("div");
+    head.className = "lf-modal-head";
+    const title = document.createElement("h2");
+    title.textContent = "擴充功能設定";
+    const close = document.createElement("button");
+    close.className = "lf-modal-close";
+    close.textContent = "×";
+    close.addEventListener("click", closeSettingsModal);
+    head.appendChild(title);
+    head.appendChild(close);
+    box.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "lf-modal-body";
+    box.appendChild(body);
+
+    // 母語
+    const nativeRow = row("母語", "翻譯與解釋使用的語言");
+    nativeRow.classList.add("lf-row-stack");
+    nativeRow.appendChild(
+      selectControl("targetLanguage", [
+        ["zh-TW", "繁體中文"],
+        ["zh-CN", "简体中文"],
+        ["en", "English"],
+      ]),
+    );
+    body.appendChild(nativeRow);
+
+    // 學習語言
+    const learnRow = row("學習語言", "你正在學習的影片語言");
+    learnRow.classList.add("lf-row-stack");
+    learnRow.appendChild(
+      selectControl("sourceLanguage", [
+        ["japanese", "日文"],
+        ["english", "英文"],
+      ]),
+    );
+    body.appendChild(learnRow);
+
+    // 進階設定（可摺疊）
+    const advToggle = document.createElement("button");
+    advToggle.className = "lf-adv-toggle";
+    advToggle.textContent = "進階設定";
+    const adv = document.createElement("div");
+    adv.className = "lf-adv";
+    advToggle.addEventListener("click", () => {
+      adv.classList.toggle("open");
+      advToggle.classList.toggle("open");
+    });
+    body.appendChild(advToggle);
+    body.appendChild(adv);
+
+    const trRow = row("顯示字幕翻譯", "在原字幕下方顯示翻譯");
+    trRow.appendChild(toggleControl("showSubtitleTranslation"));
+    adv.appendChild(trRow);
+
+    const hpRow = row("懸停自動暫停", "滑鼠懸停在字幕上時暫停影片");
+    hpRow.appendChild(toggleControl("hoverPause"));
+    adv.appendChild(hpRow);
+
+    const sizeRow = row("字幕大小", "調整字幕文字大小");
+    sizeRow.appendChild(stepperControl());
+    adv.appendChild(sizeRow);
+
+    const info = document.createElement("div");
+    info.className = "lf-info";
+    info.textContent = "觀看影片時點擊字幕中的任意單字，即可獲取即時釋義並儲存到收藏。";
+    body.appendChild(info);
+
+    const done = document.createElement("button");
+    done.className = "lf-done";
+    done.textContent = "完成";
+    done.addEventListener("click", closeSettingsModal);
+    body.appendChild(done);
+
+    return backdrop;
+  }
+
+  function openSettingsModal() {
+    if (!modal) modal = buildModal();
+    modalHost().appendChild(modal);
+    modal.style.display = "flex";
+  }
+
+  function closeSettingsModal() {
+    if (modal) modal.style.display = "none";
+  }
+
+  // 全螢幕切換時要把 modal 搬到全螢幕元素底下，否則會看不到
+  document.addEventListener("fullscreenchange", () => {
+    if (modal && modal.style.display === "flex") modalHost().appendChild(modal);
+    positionOverlay();
+  });
+  window.addEventListener("resize", positionOverlay);
 
   // ── 事件：點字幕 ──────────────────────────────────────────
   document.addEventListener(
@@ -369,6 +1060,7 @@
         if (card && card.style.display === "block" && !card.contains(e.target)) hideCard();
         return;
       }
+      if (!settings.enabled) return;
       e.preventDefault();
       e.stopPropagation();
       const word = wordAtPoint(e.clientX, e.clientY) || seg.textContent.trim();
@@ -380,6 +1072,7 @@
 
   // ── 事件：選取字幕文字翻譯 ───────────────────────────────
   document.addEventListener("mouseup", (e) => {
+    if (!settings.enabled) return;
     const sel = window.getSelection();
     const text = sel && sel.toString().trim();
     if (!text) return;
@@ -388,5 +1081,13 @@
     const seg = anchor.closest(".ytp-caption-segment");
     const line = seg ? captionLineText(seg) : text;
     openCard(text, line, e.clientX, e.clientY);
+  });
+
+  // ── 啟動 ──────────────────────────────────────────────────
+  loadSettings().then(() => {
+    watchPlayerControls();
+    attachCaptionObserver();
+    applySettings();
+    loadSavedTerms(); // 標記已收藏過的單字（失敗就只是不標記，不影響其他功能）
   });
 })();

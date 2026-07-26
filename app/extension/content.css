@@ -133,3 +133,317 @@
 #lf-card .lf-card-status.error {
   color: #ef5757;
 }
+
+/* ══════════════════════════════════════════════════════════
+   播放器內控制列：開啟／關閉 pill ＋ 齒輪
+   ══════════════════════════════════════════════════════════ */
+#movie_player .lf-pill {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  width: auto !important;
+  padding: 0 10px !important;
+  margin-right: 4px;
+  height: 28px;
+  align-self: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 1 !important;
+  vertical-align: middle;
+}
+#movie_player .lf-pill:hover { background: rgba(255, 255, 255, 0.28); }
+#movie_player .lf-pill.lf-on { background: #2f75ed; }
+#movie_player .lf-pill .lf-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+}
+#movie_player .lf-pill.lf-on .lf-pill-dot { background: #fff; }
+#movie_player .lf-gear {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 32px !important;
+  height: 28px;
+  align-self: center;
+  color: #fff;
+  opacity: 0.9 !important;
+  vertical-align: middle;
+}
+#movie_player .lf-gear:hover { opacity: 1 !important; }
+
+/* ══════════════════════════════════════════════════════════
+   雙字幕覆蓋層
+   ══════════════════════════════════════════════════════════ */
+#lf-sub-overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 92%;
+  display: none;
+  z-index: 60;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(8, 8, 8, 0.78);
+  color: #fff;
+  font-family: "YouTube Noto", Roboto, "Noto Sans TC", -apple-system, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: auto;
+}
+
+/* 可點的單字（斷詞後每個詞一個框）*/
+#lf-sub-overlay .lf-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 5px 6px;
+}
+#lf-sub-overlay .lf-token {
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  white-space: nowrap;
+}
+#lf-sub-overlay .lf-token:hover {
+  background: #2f75ed;
+  border-color: #2f75ed;
+}
+/* 已收藏過的單字 */
+#lf-sub-overlay .lf-token-saved {
+  border-color: #17b890;
+  color: #7ef0cd;
+}
+#lf-sub-overlay .lf-token-saved:hover {
+  background: #17b890;
+  border-color: #17b890;
+  color: #fff;
+}
+#lf-sub-overlay .lf-punct {
+  opacity: 0.65;
+  margin-left: -3px;
+}
+#lf-sub-overlay .lf-sub-tr:not(:empty) {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 0.92em;
+  font-weight: 700;
+  color: #ffe27a;
+}
+
+/* 覆蓋層啟用時隱藏原生字幕（用 opacity 而非 display:none，
+   否則它的 boundingRect 歸零，覆蓋層就失去定位基準） */
+#movie_player.lf-hide-native-cc .ytp-caption-window-container {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 字幕大小：YouTube 在 segment 上是 inline font-size，改 font-size 會被蓋掉，
+   所以整塊 transform 縮放 */
+#movie_player.lf-scaled .ytp-caption-window-container {
+  transform: scale(var(--lf-caption-scale, 1));
+  transform-origin: center bottom;
+}
+
+/* 播放器內提示（例如翻譯額度用盡） */
+#movie_player .lf-toast {
+  position: absolute;
+  left: 50%;
+  top: 12%;
+  transform: translateX(-50%);
+  z-index: 70;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(8, 8, 8, 0.85);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ══════════════════════════════════════════════════════════
+   設定 modal
+   ══════════════════════════════════════════════════════════ */
+#lf-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 22, 0.55);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+}
+#lf-modal-backdrop .lf-modal {
+  width: 420px;
+  max-width: 92vw;
+  max-height: 86vh;
+  overflow-y: auto;
+  background: #fff;
+  color: #111827;
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(8, 12, 22, 0.35);
+}
+#lf-modal-backdrop .lf-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 4px;
+}
+#lf-modal-backdrop .lf-modal-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  color: #111827;
+}
+#lf-modal-backdrop .lf-modal-close {
+  border: 0;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  color: #99a2b3;
+  cursor: pointer;
+  padding: 0 2px;
+}
+#lf-modal-backdrop .lf-modal-body { padding: 8px 22px 22px; }
+
+#lf-modal-backdrop .lf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #eef1f6;
+}
+#lf-modal-backdrop .lf-row-stack {
+  display: block;
+  border-bottom: 0;
+  padding-bottom: 6px;
+}
+#lf-modal-backdrop .lf-row-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+#lf-modal-backdrop .lf-row-hint {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #99a2b3;
+}
+#lf-modal-backdrop .lf-select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e4e9f2;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 14px;
+  color: #111827;
+  cursor: pointer;
+}
+
+/* iOS 式開關 */
+#lf-modal-backdrop .lf-switch {
+  flex: none;
+  width: 48px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: #d7dde8;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+#lf-modal-backdrop .lf-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.18s ease;
+}
+#lf-modal-backdrop .lf-switch.on { background: #2f75ed; }
+#lf-modal-backdrop .lf-switch.on::after { transform: translateX(20px); }
+
+#lf-modal-backdrop .lf-stepper {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+#lf-modal-backdrop .lf-stepper button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  background: #f6f8fc;
+  color: #111827;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+#lf-modal-backdrop .lf-stepper span {
+  min-width: 48px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#lf-modal-backdrop .lf-adv-toggle {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  cursor: pointer;
+}
+#lf-modal-backdrop .lf-adv-toggle::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  color: #99a2b3;
+  transition: transform 0.15s ease;
+}
+#lf-modal-backdrop .lf-adv-toggle.open::before { transform: rotate(90deg); }
+#lf-modal-backdrop .lf-adv { display: none; }
+#lf-modal-backdrop .lf-adv.open { display: block; }
+
+#lf-modal-backdrop .lf-info {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #eef4ff;
+  color: #3b567f;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+#lf-modal-backdrop .lf-done {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #2f75ed;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}

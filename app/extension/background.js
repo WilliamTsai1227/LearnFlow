@@ -9,15 +9,23 @@
 const DEFAULT_API_BASE = "http://localhost";
 
 async function getSettings() {
-  const { apiBase, targetLanguage, sourceLanguage } = await chrome.storage.local.get([
+  const cfg = await chrome.storage.local.get([
     "apiBase",
     "targetLanguage",
     "sourceLanguage",
+    "enabled",
+    "showSubtitleTranslation",
+    "hoverPause",
+    "captionScale",
   ]);
   return {
-    apiBase: (apiBase || DEFAULT_API_BASE).replace(/\/$/, ""),
-    targetLanguage: targetLanguage || "zh-TW",
-    sourceLanguage: sourceLanguage || "japanese",
+    apiBase: (cfg.apiBase || DEFAULT_API_BASE).replace(/\/$/, ""),
+    targetLanguage: cfg.targetLanguage || "zh-TW",
+    sourceLanguage: cfg.sourceLanguage || "japanese",
+    enabled: cfg.enabled !== false,
+    showSubtitleTranslation: cfg.showSubtitleTranslation !== false,
+    hoverPause: cfg.hoverPause === true,
+    captionScale: cfg.captionScale || 100,
   };
 }
 
@@ -159,6 +167,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           method: "POST",
           body: JSON.stringify(msg.payload),
         });
+        sendResponse({ ok: true, data });
+      } else if (msg.action === "listCaptures") {
+        // 供 content script 標記「已收藏過」的單字
+        const data = await apiFetch("/api/captures?limit=100");
         sendResponse({ ok: true, data });
       } else if (msg.action === "tts") {
         const { text, language } = msg.payload;

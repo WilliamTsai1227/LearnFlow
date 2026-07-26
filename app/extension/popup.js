@@ -1,17 +1,15 @@
+// popup 只負責「連線設定」與「登入狀態」；
+// 學習相關設定（語言、雙字幕、字幕大小…）在 YouTube 播放器內的齒輪設定面板。
 const DEFAULT_API_BASE = "http://localhost";
 
 const apiBaseInput = document.getElementById("apiBase");
-const sourceSel = document.getElementById("sourceLanguage");
-const targetSel = document.getElementById("targetLanguage");
 const statusEl = document.getElementById("status");
 const savedEl = document.getElementById("saved");
 const openSite = document.getElementById("openSite");
 
 async function load() {
-  const cfg = await chrome.storage.local.get(["apiBase", "sourceLanguage", "targetLanguage"]);
+  const cfg = await chrome.storage.local.get(["apiBase"]);
   apiBaseInput.value = cfg.apiBase || DEFAULT_API_BASE;
-  sourceSel.value = cfg.sourceLanguage || "japanese";
-  targetSel.value = cfg.targetLanguage || "zh-TW";
   openSite.href = apiBaseInput.value.replace(/\/$/, "");
   refreshStatus();
 }
@@ -30,11 +28,7 @@ function refreshStatus() {
 
 document.getElementById("save").addEventListener("click", async () => {
   const apiBase = apiBaseInput.value.trim().replace(/\/$/, "") || DEFAULT_API_BASE;
-  await chrome.storage.local.set({
-    apiBase,
-    sourceLanguage: sourceSel.value,
-    targetLanguage: targetSel.value,
-  });
+  await chrome.storage.local.set({ apiBase });
   await chrome.storage.session.remove(["accessToken", "tokenExp"]);
   openSite.href = apiBase;
   savedEl.textContent = "已儲存 ✓";
