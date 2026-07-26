@@ -8,3 +8,5 @@ passlib[argon2]==1.7.4
 httpx==0.28.1
 python-multipart==0.0.20
 edge-tts>=6.1.0
+# 官方 FSRS 排程器（不要裝 [optimizer] extra，那會拉進 torch 等重相依）
+fsrs>=6.3,<7

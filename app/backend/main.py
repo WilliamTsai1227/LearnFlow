@@ -16,7 +16,8 @@ from backend.api.auth import router as auth_router
 from backend.api.captures import router as captures_router
 from backend.api.lesson import router as lesson_router
 from backend.api.notes import router as notes_router
-from backend.api.review import router as review_router
+from backend.api.exposures import router as exposures_router
+from backend.api.reviews import router as reviews_router
 from backend.api.saved import router as saved_router
 from backend.api.translate import router as translate_router
 from backend.api.tts import router as tts_router
@@ -68,7 +69,8 @@ app.include_router(lesson_router)
 app.include_router(notes_router)
 app.include_router(vocab_router)
 app.include_router(captures_router)
-app.include_router(review_router)
+app.include_router(reviews_router)
+app.include_router(exposures_router)
 app.include_router(translate_router)
 app.include_router(tts_router)
 app.include_router(analytics_router)

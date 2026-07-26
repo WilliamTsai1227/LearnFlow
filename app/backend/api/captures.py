@@ -4,14 +4,16 @@
 需 Bearer JWT（Google SSO 登入後取得的 access token；擴充以 refresh cookie 換取）。
 
 端點：
-  POST   /api/captures        — 建立擷取（自動排入 SRS）
-  GET    /api/captures        — 收藏列表（?language=、分頁）
-  DELETE /api/captures/{id}   — 刪除擷取（連同 SRS 卡）
+  POST   /api/captures                — 建立擷取（自動排入 SRS）
+  GET    /api/captures                — 收藏列表（?language=、分頁）
+  PATCH  /api/captures/{id}/context   — 回填前後文（後文在收藏當下尚未播出）
+  DELETE /api/captures/{id}           — 刪除擷取（連同 SRS 卡）
 """
 
+import json
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 import asyncpg
@@ -31,12 +33,22 @@ class CaptureKind(str, Enum):
     sentence = "sentence"
 
 
+class ContextLine(BaseModel):
+    """前後文的一行字幕（附上當時已取得的翻譯，通常來自雙字幕快取，不額外耗額度）。"""
+
+    text: str = Field(..., min_length=1, max_length=4000)
+    translation: Optional[str] = Field(default=None, max_length=4000)
+
+
 class CreateCaptureRequest(BaseModel):
-    kind: CaptureKind
+    kind: CaptureKind = CaptureKind.word
     language: Language
     term: str = Field(..., min_length=1, max_length=2000)
     context_sentence: Optional[str] = Field(default=None, max_length=4000)
     translation: Optional[str] = Field(default=None, max_length=4000)
+    sentence_translation: Optional[str] = Field(default=None, max_length=4000)
+    context_before: List[ContextLine] = Field(default_factory=list, max_length=5)
+    context_after: List[ContextLine] = Field(default_factory=list, max_length=5)
     reading: Optional[str] = Field(default=None, max_length=2000)
     romaji: Optional[str] = Field(default=None, max_length=2000)
     video_id: str = Field(..., min_length=1, max_length=20)
@@ -61,6 +73,9 @@ class CaptureItem(BaseModel):
     term: str
     context_sentence: Optional[str] = None
     translation: Optional[str] = None
+    sentence_translation: Optional[str] = None
+    context_before: List[ContextLine] = Field(default_factory=list)
+    context_after: List[ContextLine] = Field(default_factory=list)
     reading: Optional[str] = None
     romaji: Optional[str] = None
     video_id: str
@@ -68,6 +83,26 @@ class CaptureItem(BaseModel):
     video_title: Optional[str] = None
     start_seconds: float
     created_at: datetime
+
+
+def _json_list(value: Any) -> List[ContextLine]:
+    """asyncpg 的 JSONB 可能回傳 str 或已解析的 list，兩種都要能處理。"""
+    if not value:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(value, list):
+        return []
+    out: List[ContextLine] = []
+    for entry in value:
+        if isinstance(entry, dict) and entry.get("text"):
+            out.append(
+                ContextLine(text=entry["text"], translation=entry.get("translation"))
+            )
+    return out
 
 
 def _row_to_item(row: asyncpg.Record) -> CaptureItem:
@@ -78,6 +113,9 @@ def _row_to_item(row: asyncpg.Record) -> CaptureItem:
         term=row["term"],
         context_sentence=row["context_sentence"],
         translation=row["translation"],
+        sentence_translation=row["sentence_translation"],
+        context_before=_json_list(row["context_before"]),
+        context_after=_json_list(row["context_after"]),
         reading=row["reading"],
         romaji=row["romaji"],
         video_id=row["video_id"],
@@ -102,6 +140,9 @@ async def create_capture(
         term=body.term,
         context_sentence=body.context_sentence,
         translation=body.translation,
+        sentence_translation=body.sentence_translation,
+        context_before=[c.model_dump() for c in body.context_before],
+        context_after=[c.model_dump() for c in body.context_after],
         reading=body.reading,
         romaji=body.romaji,
         video_id=body.video_id,
@@ -128,6 +169,34 @@ async def list_captures(
         offset=offset,
     )
     return [_row_to_item(row) for row in rows]
+
+
+class UpdateContextRequest(BaseModel):
+    context_before: List[ContextLine] = Field(default_factory=list, max_length=5)
+    context_after: List[ContextLine] = Field(default_factory=list, max_length=5)
+
+
+@router.patch("/captures/{capture_id}/context", response_model=CaptureItem)
+async def update_capture_context(
+    capture_id: UUID,
+    body: UpdateContextRequest,
+    current_user: asyncpg.Record = Depends(get_current_user),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """
+    回填前後文。主要用途：收藏當下「後面兩句」尚未播出，
+    擴充會在後續字幕出現後呼叫此端點補上（best-effort）。
+    """
+    row = await captures_repository.update_context(
+        db,
+        current_user["id"],
+        capture_id,
+        context_before=[c.model_dump() for c in body.context_before],
+        context_after=[c.model_dump() for c in body.context_after],
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Capture not found")
+    return _row_to_item(row)
 
 
 @router.delete("/captures/{capture_id}", status_code=status.HTTP_204_NO_CONTENT)

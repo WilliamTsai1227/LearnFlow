@@ -279,16 +279,12 @@
 
     const actions = document.createElement("div");
     actions.className = "lf-card-actions";
+    // 只有「收藏單字」一個選項；系統實際會連整句與前後文一起保存
     const saveWord = document.createElement("button");
     saveWord.className = "lf-btn lf-btn-primary";
-    saveWord.textContent = "＋ 儲存單字";
-    saveWord.addEventListener("click", () => saveCapture("word", saveWord));
-    const saveSentence = document.createElement("button");
-    saveSentence.className = "lf-btn";
-    saveSentence.textContent = "＋ 儲存整句";
-    saveSentence.addEventListener("click", () => saveCapture("sentence", saveSentence));
+    saveWord.textContent = "＋ 收藏單字";
+    saveWord.addEventListener("click", () => saveCapture(saveWord));
     actions.appendChild(saveWord);
-    actions.appendChild(saveSentence);
     c.appendChild(actions);
 
     const status = document.createElement("div");
@@ -402,28 +398,35 @@
     positionCard(x, y);
   }
 
-  async function saveCapture(kind, btn) {
+  // 只收藏「單字」，但實際寫入的是：單字 + 完整句子 + 前兩句（後兩句稍後回填）
+  async function saveCapture(btn) {
     btn.disabled = true;
     setStatus("儲存中…", "");
-    let translation = cardState.translation === "翻譯失敗" ? null : cardState.translation;
 
-    if (kind === "sentence") {
-      // 整句翻譯在點字時已平行取得；萬一失敗才補查一次
-      if (!cardState.lineTranslation) {
-        const resp = await translateReq(cardState.line);
-        if (resp && resp.ok) cardState.lineTranslation = resp.data.translation;
-      }
-      translation = cardState.lineTranslation || null;
+    const line = cardState.line || cardState.term;
+    // 整句翻譯在點字時已平行取得；萬一失敗才補查一次
+    if (line && !cardState.lineTranslation) {
+      const resp = await translateReq(line);
+      if (resp && resp.ok) cardState.lineTranslation = resp.data.translation;
     }
 
+    // 前兩句：從字幕歷史取當前句之前的內容
+    const before = captionHistory
+      .filter((h) => h.text !== line)
+      .slice(-CONTEXT_LINES)
+      .map((h) => ({ text: h.text, translation: h.translation || null }));
+
     const payload = {
-      kind,
+      kind: "word",
       language: settings.sourceLanguage,
-      term: kind === "word" ? cardState.term : cardState.line || cardState.term,
-      context_sentence: cardState.line || null,
-      translation: translation || null,
-      reading: kind === "word" ? cardState.reading : null,
-      romaji: kind === "word" ? cardState.romaji : null,
+      term: cardState.term,
+      context_sentence: line || null,
+      translation: cardState.translation === "翻譯失敗" ? null : cardState.translation || null,
+      sentence_translation: cardState.lineTranslation || null,
+      context_before: before,
+      context_after: [],
+      reading: cardState.reading,
+      romaji: cardState.romaji,
       video_id: cardState.videoId,
       video_url: cardState.videoUrl,
       video_title: cardState.videoTitle,
@@ -433,10 +436,11 @@
     btn.disabled = false;
     if (resp && resp.ok) {
       setStatus("已收藏，已排入複習 ✓", "ok");
-      if (kind === "word") {
-        // 立即標記剛收藏的字（字幕上該詞會變成已收藏樣式）
-        savedTerms.add(normalizeTerm(cardState.term));
-        renderCaptionTokens(lastTranslatedText);
+      savedTerms.add(normalizeTerm(cardState.term));
+      renderCaptionTokens(lastTranslatedText);
+      // 後兩句尚未播出，登記等待回填
+      if (resp.data && resp.data.id) {
+        pendingContexts.push({ captureId: resp.data.id, lines: [], baseText: line });
       }
     } else {
       setStatus((resp && resp.error) || "收藏失敗", "error");
@@ -593,6 +597,42 @@
     return String(t || "").trim().toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
   }
 
+  // ── 被動曝光（看到 ≠ 複習）────────────────────────────────
+  // 只記錄「使用者已有卡片的詞」在字幕上出現過：
+  //   1. 每行字幕的每個詞都記會爆量，且沒有學習意義
+  //   2. 「又遇到正在學的字」才是有價值的訊號
+  // 後端只寫 context_exposures，永遠不會改動 FSRS 排程。
+  const exposureQueue = [];
+  const exposureSeen = new Set(); // 同一句同一詞只記一次
+  const EXPOSURE_FLUSH_MS = 10000;
+
+  function recordExposures(tokens, sentence) {
+    if (!settings.enabled || !savedTerms.size) return;
+    const videoId = getVideoId();
+    tokens.forEach((tok) => {
+      const norm = normalizeTerm(tok);
+      if (!norm || !savedTerms.has(norm)) return;
+      const key = `${norm}@@${sentence}`;
+      if (exposureSeen.has(key)) return;
+      exposureSeen.add(key);
+      exposureQueue.push({
+        term: tok,
+        language: settings.sourceLanguage,
+        video_id: videoId || null,
+        sentence: sentence || null,
+      });
+    });
+  }
+
+  function flushExposures() {
+    if (!exposureQueue.length) return;
+    const batch = exposureQueue.splice(0, exposureQueue.length);
+    sendMessage({ action: "logExposures", payload: { exposures: batch } });
+  }
+
+  setInterval(flushExposures, EXPOSURE_FLUSH_MS);
+  window.addEventListener("pagehide", flushExposures);
+
   async function loadSavedTerms() {
     const resp = await sendMessage({ action: "listCaptures" });
     if (resp && resp.ok && Array.isArray(resp.data)) {
@@ -615,6 +655,50 @@
   let translateFailures = 0;
   let subtitlesDisabledForSession = false;
   const lineCache = new Map(); // session 內第二層快取，DB 快取之外再擋一次
+
+  // 字幕歷史：收藏時要一併保存「前兩句」；每筆 {text, translation}
+  const captionHistory = [];
+  const HISTORY_MAX = 8;
+
+  // 收藏當下「後兩句」還沒播出，先記著，等後續字幕出現再回填到後端
+  const pendingContexts = []; // {captureId, lines: [...], baseText}
+  const CONTEXT_LINES = 2;
+
+  function pushCaptionHistory(text, translation) {
+    const last = captionHistory[captionHistory.length - 1];
+    if (last && last.text === text) {
+      if (translation && !last.translation) last.translation = translation;
+      return;
+    }
+    captionHistory.push({ text, translation: translation || null });
+    if (captionHistory.length > HISTORY_MAX) captionHistory.shift();
+
+    // 這句是「新的一句」→ 餵給所有等待後文的收藏
+    for (let i = pendingContexts.length - 1; i >= 0; i--) {
+      const p = pendingContexts[i];
+      if (text === p.baseText) continue; // 同一句重複出現，不算後文
+      p.lines.push({ text, translation: translation || null });
+      if (p.lines.length >= CONTEXT_LINES) {
+        flushPendingContext(p);
+        pendingContexts.splice(i, 1);
+      }
+    }
+  }
+
+  function flushPendingContext(p) {
+    sendMessage({
+      action: "updateCaptureContext",
+      payload: { captureId: p.captureId, context_after: p.lines },
+    });
+  }
+
+  // 離開頁面前，把還沒滿兩句的後文先送出去（有一句總比沒有好）
+  window.addEventListener("pagehide", () => {
+    while (pendingContexts.length) {
+      const p = pendingContexts.pop();
+      if (p.lines.length) flushPendingContext(p);
+    }
+  });
 
   let tokenRow = null;
   let translationRow = null;
@@ -644,7 +728,9 @@
   function renderCaptionTokens(text) {
     if (!tokenRow || !text) return;
     tokenRow.textContent = "";
-    tokenize(text, settings.sourceLanguage).forEach((tok) => {
+    const tokens = tokenize(text, settings.sourceLanguage);
+    recordExposures(tokens, text); // 被動曝光：只記已有卡片的詞，不影響排程
+    tokens.forEach((tok) => {
       if (!isWordLike(tok)) {
         // 標點：跟在前一個詞後面，不做成可點的框
         const punct = document.createElement("span");
@@ -782,7 +868,10 @@
       if (player) player.classList.add("lf-hide-native-cc");
       positionOverlay();
 
+      pushCaptionHistory(text, null);
+
       const tr = await translateCaptionLine(text);
+      if (tr) pushCaptionHistory(text, tr); // 補上翻譯（同句不會重複 push）
       if (text !== lastTranslatedText || !subtitlesActive()) return;
       translationRow.textContent = tr || "";
       positionOverlay();

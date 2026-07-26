@@ -3728,7 +3728,12 @@ button {
 }
 
 /* ── 複習頁 ──────────────────────────────────────────────────── */
+/* 頁面本身滿版：工具列才能像其他頁一樣頂到最左與最右。
+   卡片另外由 .review-card-wrap 限制寬度並置中，不會跟著變寬。 */
 .review-page {
+  width: 100%;
+}
+.review-card-wrap {
   max-width: 640px;
   margin: 0 auto;
 }
@@ -3969,3 +3974,288 @@ button {
   gap: 6px;
 }
 .review-audio svg { width: 16px; height: 16px; flex: none; }
+
+/* ── YouTube 收藏：依影片分組 ─────────────────────────────────── */
+.cap-video-group { margin-bottom: 28px; }
+.cap-video-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  border-bottom: 2px solid var(--line);
+}
+.cap-video-title-wrap { min-width: 0; }
+.cap-video-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.4;
+}
+.cap-video-count {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cap-video-open { flex: none; }
+
+.cap-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+/* ── 單字卡 ──────────────────────────────────────────────────── */
+.cap-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+}
+.cap-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.cap-card-top .tag-row { align-items: center; gap: 6px; }
+.cap-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.cap-word-row { display: flex; align-items: center; gap: 8px; }
+.cap-word {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+  word-break: break-word;
+}
+.cap-icon-btn {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cap-icon-btn:hover { background: var(--surface-soft); color: var(--blue); }
+
+.cap-romaji { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--blue); }
+.cap-reading { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.cap-word-tr { margin: 6px 0 0; font-size: 15px; font-weight: 700; color: var(--green); }
+
+/* 整句（單字被標記其中） */
+.cap-sentence-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.cap-sentence-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.cap-term-mark {
+  padding: 1px 5px;
+  border: 1px solid var(--blue);
+  border-radius: 5px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 700;
+}
+.cap-show-tr {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cap-show-tr:hover { text-decoration: underline; }
+.cap-sentence-tr {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* 上下文展開 */
+.cap-context {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.cap-ctx-line { padding: 6px 0; }
+.cap-ctx-line + .cap-ctx-line { border-top: 1px dashed var(--line); }
+.cap-ctx-text { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.cap-ctx-tr { font-size: 12px; color: #99a2b3; margin-top: 2px; line-height: 1.5; }
+.cap-ctx-current .cap-sentence-text,
+.cap-ctx-current .cap-ctx-text { color: var(--text); font-weight: 600; }
+
+.cap-card-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+@media (max-width: 640px) {
+  .cap-card-grid { grid-template-columns: 1fr; }
+  .cap-video-header { flex-direction: column; }
+}
+
+/* ── 固化記憶：軌道分頁與題型 ─────────────────────────────────── */
+.review-tabs { margin: 4px 0 14px; }
+
+.review-prompt-hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* 挖空題：題幹放大，空格明顯 */
+.review-cloze {
+  margin: 12px 0 0;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.7;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.review-card-context-tr {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.review-card-back .review-card-term { margin-top: 0; }
+
+/* ── 固化記憶：工具列（左＝語言篩選、右＝每日新卡）───────────── */
+/* 滿版工具列：語言頂到最左、每日新卡頂到最右（與「單字」頁的篩選列一致） */
+.review-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.review-toolbar-left,
+.review-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.review-toolbar-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+/* 語言 chip：比一般 chip-button 更小巧 */
+.review-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.review-chip:hover { background: var(--surface-soft); }
+.review-chip.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.review-chip-count {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.72;
+}
+.review-chip.active .review-chip-count { opacity: 0.9; }
+
+/* 每日新卡步進器 */
+.review-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+.review-stepper button {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.review-stepper button:hover:not(:disabled) { background: var(--surface); }
+.review-stepper button:disabled { opacity: 0.35; cursor: default; }
+.review-stepper-value {
+  min-width: 26px;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.review-info {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: help;
+  user-select: none;
+}
+
+@media (max-width: 640px) {
+  .review-toolbar { justify-content: flex-start; }
+}

@@ -28,7 +28,7 @@ const navItems = [
   { id: "home", icon: "home", label: "首頁", enabled: true },
   { id: "learn", icon: "book-open", label: "學習", enabled: true },
   { id: "notes", icon: "file-text", label: "筆記", enabled: true },
-  { id: "review", icon: "refresh-cw", label: "複習", enabled: true },
+  { id: "review", icon: "refresh-cw", label: "固化記憶", enabled: true },
   { id: "flashcards", icon: "layers", label: "單字", enabled: true },
   { id: "sentences", icon: "message-square-text", label: "句子練習", enabled: false },
   { id: "progress", icon: "bar-chart-3", label: "進度分析", enabled: true },

@@ -98,6 +98,9 @@ CREATE TABLE user_profiles (
     level                  level_code    NOT NULL DEFAULT 'beginner',
     interests              TEXT[]        NOT NULL DEFAULT '{}',
     daily_goal_minutes     SMALLINT      NOT NULL DEFAULT 30,
+    -- 固化記憶：兩軌各自的每日新卡上限（規格建議初期 5–10、穩定後 10–20）
+    daily_new_youtube      SMALLINT      NOT NULL DEFAULT 10,
+    daily_new_course       SMALLINT      NOT NULL DEFAULT 10,
     speech_speed           DECIMAL(3,2)  NOT NULL DEFAULT 1.00,
     ai_feedback_strictness VARCHAR(20)   NOT NULL DEFAULT 'normal',
     ui_language            VARCHAR(10)   NOT NULL DEFAULT 'zh-TW',
@@ -369,11 +372,16 @@ CREATE INDEX idx_note_texts_user ON note_texts (user_id);
 CREATE TABLE captures (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id          UUID          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    kind             VARCHAR(10)   NOT NULL,            -- 'word' | 'sentence'
+    kind             VARCHAR(10)   NOT NULL,            -- 'word' | 'sentence'（新版擴充只產生 'word'）
     language         language_code NOT NULL,
     term             TEXT          NOT NULL,            -- 點的字，或整句
     context_sentence TEXT,                              -- 該字所在的完整字幕句
-    translation      TEXT,
+    translation      TEXT,                              -- 單字在句中的字義
+    sentence_translation TEXT,                          -- context_sentence 的整句翻譯
+    -- 前後文：JSONB 陣列 [{"text": "...", "translation": "..."}]
+    -- 後文在收藏當下尚未播出，由擴充事後以 PATCH .../context 回填
+    context_before   JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    context_after    JSONB         NOT NULL DEFAULT '[]'::jsonb,
     reading          TEXT,
     romaji           TEXT,
     video_id         VARCHAR(20)   NOT NULL,
@@ -394,14 +402,19 @@ CREATE INDEX idx_captures_user ON captures (user_id, created_at DESC);
 -- API：GET /api/review/queue、POST /api/review/{card_id}/grade、GET /api/review/summary
 -- ------------------------------------------------------------
 
+-- 欄位對齊官方 py-fsrs 的 Card：
+--   state：Learning=1 / Review=2 / Relearning=3（無 new，新卡即 Learning）
+--   stability / difficulty：NULL 表示尚未初始化（不可用 0）
+--   step：學習步驟索引，進入 Review 後為 NULL
 CREATE TABLE srs_cards (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    item_type    VARCHAR(20) NOT NULL,                  -- 'capture' | 'vocabulary' | 'sentence'
+    item_type    VARCHAR(20) NOT NULL,                  -- 'capture'（YouTube 軌）| 'vocabulary' | 'sentence'（課程軌）
     item_id      VARCHAR(60) NOT NULL,                  -- captures.id / course_vocabulary.id / course_sentences.id
-    stability    REAL        NOT NULL DEFAULT 0,        -- FSRS S
-    difficulty   REAL        NOT NULL DEFAULT 0,        -- FSRS D (0 未初始化，初始化後 1-10)
-    state        SMALLINT    NOT NULL DEFAULT 0,
+    stability    REAL,                                  -- FSRS S（NULL=尚未初始化）
+    difficulty   REAL,                                  -- FSRS D（NULL=尚未初始化，初始化後 1-10）
+    state        SMALLINT    NOT NULL DEFAULT 1,        -- py-fsrs State
+    step         SMALLINT    DEFAULT 0,                 -- 學習步驟索引（Review 狀態為 NULL）
     due          TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_review  TIMESTAMPTZ,
     reps         INT         NOT NULL DEFAULT 0,
@@ -418,18 +431,44 @@ CREATE INDEX idx_srs_cards_due ON srs_cards (user_id, due);
 -- ------------------------------------------------------------
 
 CREATE TABLE srs_reviews (
-    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id        UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    card_id        UUID        NOT NULL REFERENCES srs_cards(id) ON DELETE CASCADE,
-    rating         SMALLINT    NOT NULL,
-    state_before   SMALLINT    NOT NULL,
-    elapsed_days   REAL        NOT NULL DEFAULT 0,
-    scheduled_days REAL        NOT NULL DEFAULT 0,
-    reviewed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    card_id         UUID        NOT NULL REFERENCES srs_cards(id) ON DELETE CASCADE,
+    rating          SMALLINT    NOT NULL,               -- py-fsrs Rating：1=Again 2=Hard 3=Good 4=Easy
+    state_before    SMALLINT    NOT NULL,
+    elapsed_days    REAL        NOT NULL DEFAULT 0,
+    scheduled_days  REAL        NOT NULL DEFAULT 0,
+    -- 作答訊號（供日後 FSRS 參數最佳化與學習分析）
+    response_ms     INT,                                -- 卡片顯示 → 按下評分的毫秒數
+    prompt_type     VARCHAR(20),                        -- 'recognition' | 'cloze'
+    hint_used       BOOLEAN     NOT NULL DEFAULT false,
+    answer_revealed BOOLEAN     NOT NULL DEFAULT false, -- 是否按過「顯示答案」
+    reviewed_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_srs_reviews_user ON srs_reviews (user_id, reviewed_at);
 CREATE INDEX idx_srs_reviews_card ON srs_reviews (card_id, reviewed_at);
+
+-- ------------------------------------------------------------
+-- context_exposures — 被動曝光（字幕上看到單字）
+-- 「看到 ≠ 完成複習」：這張表絕對不參與 FSRS 排程，
+-- 只有使用者主動回想並評分（srs_reviews）才會更新 srs_cards。
+-- 只記錄「使用者已有卡片的詞」，否則每行字幕每個詞都記會爆量。
+-- API：POST /api/exposures（批次）
+-- ------------------------------------------------------------
+
+CREATE TABLE context_exposures (
+    id        UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id   UUID          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    term      TEXT          NOT NULL,
+    language  language_code NOT NULL,
+    video_id  VARCHAR(20),
+    sentence  TEXT,
+    seen_at   TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_context_exposures_user ON context_exposures (user_id, seen_at DESC);
+CREATE INDEX idx_context_exposures_term ON context_exposures (user_id, term);
 
 -- ------------------------------------------------------------
 -- translation_cache — 翻譯快取（同一 (詞, 語言對) 只查一次）

@@ -168,6 +168,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           body: JSON.stringify(msg.payload),
         });
         sendResponse({ ok: true, data });
+      } else if (msg.action === "updateCaptureContext") {
+        // 回填後文（收藏當下後兩句尚未播出）
+        const { captureId, context_after } = msg.payload;
+        const data = await apiFetch(`/api/captures/${captureId}/context`, {
+          method: "PATCH",
+          body: JSON.stringify({ context_after: context_after || [] }),
+        });
+        sendResponse({ ok: true, data });
+      } else if (msg.action === "logExposures") {
+        // 被動曝光：後端只寫 context_exposures，不會改動任何 FSRS 排程
+        const data = await apiFetch("/api/exposures", {
+          method: "POST",
+          body: JSON.stringify(msg.payload),
+        });
+        sendResponse({ ok: true, data });
       } else if (msg.action === "listCaptures") {
         // 供 content script 標記「已收藏過」的單字
         const data = await apiFetch("/api/captures?limit=100");
