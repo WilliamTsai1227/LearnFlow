@@ -25,6 +25,33 @@ async def list_other_scenario_titles(
     return [row["title"] for row in rows]
 
 
+async def list_sibling_course_translations(
+    conn: asyncpg.Connection,
+    scenario_id: str,
+    exclude_course_id: str,
+    limit: int = 20,
+) -> list[str]:
+    """
+    同一情境下、其他課程的句子翻譯 —— 盲聽測驗的干擾項優先用這些。
+    來自完全不同情境的句子（例如「辦公室」對上「咖啡廳」）用主題就能排除，
+    題目會變得太好猜；同情境的句子在語境上同樣合理，才真的需要聽懂內容。
+    """
+    rows = await conn.fetch(
+        """
+        SELECT cs.translation
+        FROM course_sentences cs
+        JOIN courses c ON c.id = cs.course_id
+        WHERE c.scenario_id = $1 AND cs.course_id <> $2
+        ORDER BY cs.course_id, cs.order_index
+        LIMIT $3
+        """,
+        scenario_id,
+        exclude_course_id,
+        limit,
+    )
+    return [row["translation"] for row in rows]
+
+
 async def list_other_course_translations(
     conn: asyncpg.Connection,
     language: str,

@@ -71,6 +71,10 @@ async def get_lesson(scenario_id: str, course_id: str) -> LessonResponse:
         other_translations = await lesson_repository.list_other_course_translations(
             conn, language, course_id
         )
+        # 盲聽干擾項優先用同情境的其他課程（語境合理、無法用主題排除）
+        sibling_translations = await lesson_repository.list_sibling_course_translations(
+            conn, scenario_id, course_id
+        )
 
     sentences = [dict(row) for row in sentence_rows]
     vocabulary = [dict(row) for row in vocabulary_rows]
@@ -83,6 +87,7 @@ async def get_lesson(scenario_id: str, course_id: str) -> LessonResponse:
         language=language,
         other_scenario_titles=other_titles,
         other_course_translations=other_translations,
+        sibling_course_translations=sibling_translations,
     )
 
     return LessonResponse(

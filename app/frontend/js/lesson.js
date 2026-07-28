@@ -23,7 +23,7 @@ const lessonState = {
   rt: {},
   attempts: [],
   resultSent: false,
-  sequence: { playing: false, index: 0, urls: [] },
+  sequence: { playing: false, paused: false, index: 0, urls: [], onUpdate: null, onDone: null },
 };
 
 const STEP_SKILLS = {
@@ -140,39 +140,70 @@ function lessonPlayUrl(url) {
   });
 }
 
+/** 完全停止：重設回第一句（再按播放會從頭開始）。 */
 function stopLessonSequence() {
   lessonState.sequence.playing = false;
+  lessonState.sequence.paused = false;
+  lessonState.sequence.index = 0;
   lessonAudio.onended = null;
   lessonAudio.pause();
 }
 
+/** 暫停：保留目前句子的位置（再按播放會重念這一句，再順著往下）。 */
+function pauseLessonSequence() {
+  lessonState.sequence.playing = false;
+  lessonState.sequence.paused = true;
+  lessonAudio.onended = null;
+  lessonAudio.pause();
+}
+
+/** 內部：從 sequence.index 開始依序播放。 */
+function runLessonSequence() {
+  const seq = lessonState.sequence;
+  if (!seq.playing || seq.index >= seq.urls.length) {
+    seq.playing = false;
+    seq.paused = false;
+    seq.index = 0; // 播完自然結束 → 下次從頭
+    lessonAudio.onended = null;
+    if (seq.onDone) seq.onDone();
+    return;
+  }
+  const url = seq.urls[seq.index];
+  if (seq.onUpdate) seq.onUpdate(seq.index);
+  lessonAudio.src = `/${url.replace(/^\//, "")}`;
+  lessonAudio.onended = () => {
+    seq.index += 1;
+    runLessonSequence();
+  };
+  lessonAudio.play().catch(() => {
+    seq.playing = false;
+    seq.paused = false;
+    lessonAudio.onended = null;
+    showToast("語音檔播放失敗，請稍後再試。", { type: "warning" });
+    if (seq.onDone) seq.onDone();
+  });
+}
+
 function playLessonSequence(urls, onUpdate, onDone) {
   stopLessonSequence();
-  lessonState.sequence = { playing: true, index: 0, urls };
-
-  const playNext = () => {
-    const seq = lessonState.sequence;
-    if (!seq.playing || seq.index >= seq.urls.length) {
-      seq.playing = false;
-      lessonAudio.onended = null;
-      if (onDone) onDone();
-      return;
-    }
-    const url = seq.urls[seq.index];
-    if (onUpdate) onUpdate(seq.index);
-    lessonAudio.src = `/${url.replace(/^\//, "")}`;
-    lessonAudio.onended = () => {
-      seq.index += 1;
-      playNext();
-    };
-    lessonAudio.play().catch(() => {
-      seq.playing = false;
-      lessonAudio.onended = null;
-      showToast("語音檔播放失敗，請稍後再試。", { type: "warning" });
-      if (onDone) onDone();
-    });
+  lessonState.sequence = {
+    playing: true,
+    paused: false,
+    index: 0,
+    urls,
+    onUpdate,
+    onDone,
   };
-  playNext();
+  runLessonSequence();
+}
+
+/** 從暫停處續播：會把「暫停時那一句」重念一次，再往下播。 */
+function resumeLessonSequence() {
+  const seq = lessonState.sequence;
+  if (!seq.urls || !seq.urls.length) return;
+  seq.playing = true;
+  seq.paused = false;
+  runLessonSequence();
 }
 
 // ---------------------------------------------------------------------------
@@ -268,11 +299,16 @@ async function openLessonBrowseMode() {
 function lessonPlayIconButton(label, onClick, options = {}) {
   const button = el("button", `lesson-play-btn${options.big ? " lesson-play-big" : ""}`);
   button.type = "button";
-  button.appendChild(createSvgIcon(["M6 4l14 8-14 8z"], options.big ? 22 : 16));
-  button.appendChild(document.createTextNode(label));
+  button.appendChild(createSvgIcon(options.icon || ["M6 4l14 8-14 8z"], options.big ? 22 : 16));
+  if (label) button.appendChild(document.createTextNode(label));
   button.addEventListener("click", onClick);
   return button;
 }
+
+// 播放控制用的圖示
+const ICON_PLAY = ["M6 4l14 8-14 8z"];
+const ICON_PAUSE = ["M9 5v14", "M15 5v14"];
+const ICON_STOP = ["M6 6h12v12H6z"];
 
 function lessonContinueButton(enabled, label = "下一步") {
   const wrap = el("div", "lesson-flow-continue");
@@ -588,36 +624,84 @@ function renderBlindListenStep(container, step) {
     ),
   );
 
+  const seq = lessonState.sequence;
   const playRow = el("div", "lesson-blind-controls");
-  const playAllBtn = lessonPlayIconButton(
-    lessonState.sequence.playing ? "停止播放" : "播放整段對話",
-    () => {
-      if (lessonState.sequence.playing) {
-        stopLessonSequence();
-        render();
-        return;
-      }
-      rt.playedOnce = true;
-      playLessonSequence(
-        data.audio_urls,
-        (index) => {
-          rt.playingIndex = index;
-          const indicator = document.querySelector("#lessonSeqIndicator");
-          if (indicator) {
-            indicator.textContent = `第 ${index + 1} / ${data.audio_urls.length} 句`;
-          }
+
+  const onProgress = (index) => {
+    rt.playingIndex = index;
+    const el2 = document.querySelector("#lessonSeqIndicator");
+    if (el2) el2.textContent = `第 ${index + 1} / ${data.audio_urls.length} 句`;
+  };
+
+  if (seq.playing) {
+    // 播放中：暫停（保留位置）＋ 停止（回到第一句）
+    playRow.appendChild(
+      lessonPlayIconButton(
+        "暫停",
+        () => {
+          pauseLessonSequence();
+          render();
         },
-        () => render(),
-      );
-      render();
-    },
-    { big: true },
-  );
-  playRow.appendChild(playAllBtn);
+        { big: true, icon: ICON_PAUSE },
+      ),
+    );
+    playRow.appendChild(
+      lessonPlayIconButton(
+        "",
+        () => {
+          stopLessonSequence();
+          rt.playingIndex = 0;
+          render();
+        },
+        { icon: ICON_STOP },
+      ),
+    );
+  } else if (seq.paused) {
+    // 暫停中：繼續會重念暫停的那一句，再往下播
+    playRow.appendChild(
+      lessonPlayIconButton(
+        "繼續播放",
+        () => {
+          seq.onUpdate = onProgress;
+          seq.onDone = () => render();
+          resumeLessonSequence();
+          render();
+        },
+        { big: true, icon: ICON_PLAY },
+      ),
+    );
+    playRow.appendChild(
+      lessonPlayIconButton(
+        "",
+        () => {
+          stopLessonSequence();
+          rt.playingIndex = 0;
+          render();
+        },
+        { icon: ICON_STOP },
+      ),
+    );
+  } else {
+    playRow.appendChild(
+      lessonPlayIconButton(
+        "播放整段對話",
+        () => {
+          rt.playedOnce = true;
+          playLessonSequence(data.audio_urls, onProgress, () => render());
+          render();
+        },
+        { big: true, icon: ICON_PLAY },
+      ),
+    );
+  }
+
   const indicator = el("span", "lesson-seq-indicator");
   indicator.id = "lessonSeqIndicator";
-  if (lessonState.sequence.playing) {
-    indicator.textContent = `第 ${(rt.playingIndex ?? 0) + 1} / ${data.audio_urls.length} 句`;
+  if (seq.playing || seq.paused) {
+    const at = (rt.playingIndex ?? 0) + 1;
+    indicator.textContent = seq.paused
+      ? `已暫停於第 ${at} / ${data.audio_urls.length} 句`
+      : `第 ${at} / ${data.audio_urls.length} 句`;
   }
   playRow.appendChild(indicator);
   card.appendChild(playRow);

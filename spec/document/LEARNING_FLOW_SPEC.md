@@ -30,12 +30,12 @@
 |---|------|------|------|----------|
 | 0 | `mission` | — | 任務卡：情境故事 + 本課目標（句數、字數、預估時間） | 按「開始」 |
 | 1 | `vocab_preview` | 單字 | 「課程 0」單字卡預習：逐張卡呈現 term + 羅馬拼音（日文）+ 播音；中文翻譯預設隱藏、點擊揭曉（主動回想） | 看完全部單字卡 |
-| 2 | `blind_listen` | 聽 | 連續播放整課音檔（不顯示文字）→ 2 題全域理解選擇題 | 全部作答 |
+| 2 | `blind_listen` | 聽 | 連續播放整課音檔（不顯示文字，可暫停／停止）→ 3 題內容理解選擇題 | 全部作答 |
 | 3 | `sentence_study` | 讀+單字 | 逐句：音檔 → 原文 → 羅馬拼音 → 翻譯（預設隱藏）；側欄單字卡 | 看完全部句子 |
 | 4 | `listen_check` | 聽 | 最多 5 題「聽音選義」：播音檔（無文字）選正確翻譯 | 全部作答 |
 | 5 | `shadowing` | 說 | 逐句跟讀：播原音 → 錄音 → 並排回放自我比對（無評分） | 每句至少播放一次；錄音非必要（麥克風被拒仍可通過） |
-| 6 | `apply` | 讀+用 | 最多 6 題混合：句子重組 + 填空選擇 | 全部作答 |
-| 7 | `write` | 寫 | 最多 3 題聽寫填空：播音檔 + 挖空句 → 打字作答 | 全部作答（兩次錯誤後顯示答案，記為錯） |
+| 6 | `apply` | 讀+用 | 最多 8 題混合：**句子重組為主（5 題）** + 填空選擇 | 全部作答 |
+| 7 | `write` | 寫 | 最多 3 題聽寫填空：播音檔 + 挖空句 → 打字作答；**避開 `apply` 已用過的句子** | 全部作答（兩次錯誤後顯示答案，記為錯） |
 | 8 | `result` | — | 分數、各技能答對率、能力宣告、寫入進度與作答紀錄 | — |
 
 > 羅馬拼音（`romaji`）：所有日文句子與單字由 `script/generate_romaji.py`（cutlet，Hepburn 式）預先產生並存於 DB `course_sentences.romaji` / `course_vocabulary.romaji`，前端在逐句、跟讀、單字卡、聽力揭曉處一律顯示；英文內容為 NULL。`vocab_preview` 步驟只在有單字時出現，前端從 `course.vocabulary` 讀取，步驟 `data` 僅含 `vocabulary_count`。
@@ -57,14 +57,26 @@
 ## 2. 題型自動生成規則（lesson_builder）
 
 所有題目由現有 `course_sentences` + `course_vocabulary` 自動生成，**不需要新增內容欄位**。
-生成使用 `random.Random(course_id)` 作種子，確保同一課每次產生相同題目（利於複習與快取）。
+生成使用 **無固定種子的 `random.Random()`**：每次載入課程都重新出題。
+目的是讓使用者重複練習同一課時仍需思考，而不是憑記憶直接選答案。
+答案、選項與音檔都在同一次生成中一併決定，因此隨機化**不會破壞配對正確性**
+（重組題的 `answer` 必可還原原句、填空正解等於目標單字、聽力/聽寫的音檔必對應該句）。
 
 ### 2.1 盲聽全域理解題（`blind_listen.quiz`）
 
-1. **情境判斷題**：「這段對話最可能發生在什麼情境？」
-   - 正解：本課所屬 `scenarios.title`；干擾項：同語言其他 3 個 scenario 的 title。
-2. **內容出現題**：「下列哪一句的意思『有』出現在對話中？」
-   - 正解：本課隨機一句的 `translation`；干擾項：同語言其他課程隨機 3 句 `translation`。
+全部為「內容理解題」，共 3 題。**不再出情境判斷題**——「這段對話發生在什麼情境？」
+用課程標題就能猜到，測不到聽力。
+
+干擾項優先取自**同情境的其他課程**（`list_sibling_course_translations`）：
+來自不同情境的句子（例如「辦公室」對上「咖啡廳」）用主題就能排除，題目太好猜；
+同情境的句子在語境上同樣合理，才真的需要聽懂內容。同情境素材不足時退回其他情境。
+干擾項會排除本課自己的句子，避免出現兩個正解。
+
+1. **內容出現題 ×2**（`sentence_choice`）：「下列哪一句的意思『有』出現在對話中？」
+   - 正解：本課隨機一句的 `translation`（兩題取不同句）；干擾項如上。
+2. **內容未出現題 ×1**（`sentence_absent_choice`）：「下列哪一句的意思『沒有』出現在對話中？」
+   - 正解：**非本課**的一句 `translation`；干擾項為本課 3 句真實 `translation`。
+   - 反向設計較難：必須認得本課全部內容才選得出來。
 
 ### 2.2 聽音選義（`listen_check`）
 
@@ -91,9 +103,22 @@
 - 判定：trim 後比對；英文忽略大小寫與首尾標點；日文接受 `term` 或 `reading` 任一。
 - 兩次錯誤後顯示正解（記為答錯），可繼續。
 
+**挖空詞的難度篩選**（`_blank_difficulty`）——不要挖太好填的詞：
+- 英文：整組都由高頻詞構成者（`super sweet`、`how much`、`for me`）評為 0 分，直接排除；
+  含內容詞者加分，並依最長內容詞的長度細分（`vanilla latte`、`cut the syrup` 勝出）。
+- 日文：含漢字或片假名（外來語）者加分，純平假名的常見詞評為低分。
+- **選題方式**：剔除 0 分者 → 依難度取約 3 倍題數的「難詞池」→ 在池中隨機挑。
+  若一律取分數最高的前 N 名，題目會完全固定、失去重複練習的意義。
+
+> **生成順序**：`write` **先於** `apply` 生成（顯示順序不變），
+> 好讓最後一關優先拿到最值得練的難詞；`apply` 再避開這些句子。
+
 ### 2.6 apply 步驟組卷規則
 
-- 目標 6 題：優先取 3 題重組 + 3 題填空；某類不足時以另一類補滿。
+- 目標 8 題：優先取 **5 題重組** + 3 題填空；某類不足時以另一類補滿。
+  詞塊重組對記憶的幫助最大，因此以它為主。
+- `write` 用掉的句子 id 會傳進來排除：同一句先聽寫過再拿來重組，練習價值很低。
+  若排除後湊不滿題數，才允許重複（有題目仍優於沒題目）。
 - 同一句子在 apply 步驟中最多出現一次（避免重複疲勞）。
 
 ## 3. 資料表
@@ -119,7 +144,7 @@ CREATE TABLE practice_attempts (
     user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     course_id     VARCHAR(50) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     step_type     VARCHAR(30) NOT NULL,   -- blind_listen | listen_check | apply | write
-    exercise_kind VARCHAR(30) NOT NULL,   -- scenario_choice | sentence_choice | listen_choice | reorder | cloze_choice | dictation
+    exercise_kind VARCHAR(30) NOT NULL,   -- sentence_choice | sentence_absent_choice | listen_choice | reorder | cloze_choice | dictation
     item_type     VARCHAR(20),            -- sentence | vocabulary（全域題為 NULL）
     item_id       VARCHAR(50),            -- course_sentences.id / course_vocabulary.id
     is_correct    BOOLEAN     NOT NULL,
