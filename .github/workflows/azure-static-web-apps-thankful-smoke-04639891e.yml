@@ -32,7 +32,6 @@ jobs:
           api_location: "" # Api source code path - optional
           output_location: "" # 純靜態站，沒有 build 產物目錄
           skip_app_build: true # 沒有 package.json，不需要 Oryx build
-          skip_api_build: true
           ###### End of Repository/Build Configurations ######
 
   close_pull_request_job:

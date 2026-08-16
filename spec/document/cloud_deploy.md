@@ -24,7 +24,8 @@
 
 - 部署內容：`app/frontend`（純 HTML / CSS / JS，無 build step）。
 - CI/CD：`.github/workflows/azure-static-web-apps-thankful-smoke-04639891e.yml`，push 到 `main` 自動部署。
-- 路由：`app/frontend/staticwebapp.config.json` 將 `/` rewrite 到 `/html/index.html`（進入點在 `html/` 子目錄，頁面內資源用 `/css`、`/js` 絕對路徑）。
+- 進入點：`index.html`、`login.html` 必須放在 `app/frontend/` 根目錄 —— SWA 在上傳前會檢查 `app_location` 根目錄是否存在 `index.html`，找不到會直接失敗（原本放在 `html/` 子目錄，已搬出）。
+- 路由：`app/frontend/staticwebapp.config.json` 只保留 `navigationFallback`，避免未知路徑吃到 SWA 預設 404 頁；此檔為可選。
 - Free 方案限制：無 SLA、100 GB/月頻寬、單一環境容量 250 MB。音檔不放這裡，走 Blob Storage。
 
 ### 2.2 Backend — Container Apps（Consumption）

@@ -29,7 +29,7 @@ from backend.database.connection import database
 import os
 
 FRONTEND_DIR = APP_DIR / "frontend"
-HTML_DIR = FRONTEND_DIR / "html"
+HTML_DIR = FRONTEND_DIR
 
 _ALLOWED_ORIGINS = [
     origin.strip()
