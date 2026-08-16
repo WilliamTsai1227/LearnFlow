@@ -34,6 +34,14 @@ from backend.module.jwt import (
 )
 
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+# 前後端不同網域時（例如前端 Static Web Apps、後端 Container Apps），瀏覽器視為跨站，
+# samesite=lax 的 cookie 不會隨 API 請求送出，需改為 none；而 none 必須搭配 secure。
+# 前後端同網域（本機、nginx 反向代理）維持 lax 即可。
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").lower()
+if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+    COOKIE_SAMESITE = "lax"
+if COOKIE_SAMESITE == "none":
+    COOKIE_SECURE = True
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv(
@@ -152,7 +160,7 @@ async def google_start(return_url: Optional[str] = None):
         value=state,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,
         max_age=600,
     )
     redirect.set_cookie(
@@ -160,7 +168,7 @@ async def google_start(return_url: Optional[str] = None):
         value=frontend_return,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,
         max_age=600,
     )
     return redirect
@@ -323,7 +331,7 @@ async def google_callback(
         value=rt,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
     return redirect
@@ -340,7 +348,12 @@ async def logout(
             "DELETE FROM refresh_tokens WHERE token = $1",
             refresh_token,
         )
-    response.delete_cookie("refresh_token")
+    response.delete_cookie(
+        "refresh_token",
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+    )
     return {"status": "success", "message": "Logged out successfully"}
 
 
@@ -414,7 +427,7 @@ async def refresh_access_token(
         value=new_rt,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 

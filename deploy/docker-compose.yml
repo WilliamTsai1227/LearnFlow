@@ -25,8 +25,8 @@ services:
 
   backend:
     build:
-      context: ../app
-      dockerfile: ../deploy/Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile
     container_name: learnflow-backend
     restart: unless-stopped
     volumes:

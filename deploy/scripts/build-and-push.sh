@@ -15,7 +15,7 @@ BACKEND_IMAGE="${DOCKERHUB_USER}/learnflow-backend:${IMAGE_TAG}"
 NGINX_IMAGE="${DOCKERHUB_USER}/learnflow-nginx:${IMAGE_TAG}"
 
 echo "==> Build backend: ${BACKEND_IMAGE}"
-docker build -f "${ROOT_DIR}/deploy/Dockerfile" -t "${BACKEND_IMAGE}" "${ROOT_DIR}/app"
+docker build --platform linux/amd64 -f "${ROOT_DIR}/deploy/Dockerfile" -t "${BACKEND_IMAGE}" "${ROOT_DIR}"
 
 echo "==> Build nginx: ${NGINX_IMAGE}"
 docker build -f "${ROOT_DIR}/deploy/Dockerfile.nginx" -t "${NGINX_IMAGE}" "${ROOT_DIR}"

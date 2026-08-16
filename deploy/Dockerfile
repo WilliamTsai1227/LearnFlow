@@ -1,11 +1,12 @@
+# build context = 專案根目錄（與 Dockerfile.nginx 一致）
 FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY backend/requirements.txt backend/requirements.txt
+COPY app/backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-COPY backend backend
+COPY app/backend backend
 
 EXPOSE 8002
 

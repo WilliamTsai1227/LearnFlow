@@ -1,0 +1,37 @@
+# build context = 專案根目錄，這裡排除不需要進映像的東西。
+# 沒有這個檔案的話 app/.venv（536MB）與 app/frontend/audio（142MB）會被一起打包。
+
+# Python 虛擬環境與快取
+**/.venv/
+**/__pycache__/
+*.py[cod]
+
+# 版本控制與 CI
+.git/
+.github/
+
+# 機密
+.env
+.env.*
+!.env.example
+credentials/
+*.pem
+*.key
+
+# 語音檔（正式環境走 Blob Storage）
+app/frontend/audio/
+
+# 使用者上傳檔
+app/backend/uploads/
+
+# Chrome 擴充不進任何映像（前端 html/css/js 仍需保留給 Dockerfile.nginx）
+app/extension/
+
+# 文件與腳本
+spec/
+script/
+README.md
+*.md
+
+# OS
+.DS_Store
