@@ -15,9 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
           lfs: false
       - name: Build And Deploy
         id: builddeploy
@@ -28,9 +28,11 @@ jobs:
           action: "upload"
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "/app/frontend" # App source code path
+          app_location: "app/frontend" # App source code path
           api_location: "" # Api source code path - optional
-          output_location: "." # Built app content directory - optional
+          output_location: "" # 純靜態站，沒有 build 產物目錄
+          skip_app_build: true # 沒有 package.json，不需要 Oryx build
+          skip_api_build: true
           ###### End of Repository/Build Configurations ######
 
   close_pull_request_job:

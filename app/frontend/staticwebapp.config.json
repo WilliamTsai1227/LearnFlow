@@ -1,0 +1,10 @@
+{
+  "routes": [
+    { "route": "/", "rewrite": "/html/index.html" },
+    { "route": "/login.html", "rewrite": "/html/login.html" }
+  ],
+  "navigationFallback": {
+    "rewrite": "/html/index.html",
+    "exclude": ["/css/*", "/js/*", "/vendor/*", "/audio/*", "/*.{png,jpg,jpeg,gif,svg,ico,webp}"]
+  }
+}
