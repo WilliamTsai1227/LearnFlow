@@ -627,8 +627,13 @@ function toggleSidebarCollapse() {
   applySidebarState();
 }
 
+// 呼叫端傳入 '/api/...' 開頭的路徑；改寫成 resolveLearnFlowApiBase() 解析出的位址，
+// 否則前後端不同網域時（前端 SWA、後端 Container Apps）會打到前端自己身上。
+const API_ROOT = resolveLearnFlowApiBase(); // 結尾已含 /api
+
 async function api(path) {
-  const response = await fetch(path);
+  const url = path.startsWith("/api") ? API_ROOT + path.slice(4) : path;
+  const response = await fetch(url);
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`HTTP ${response.status}: ${detail}`);
