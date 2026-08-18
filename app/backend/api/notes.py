@@ -199,9 +199,11 @@ async def upload_note(
     except Exception as exc:
         # 儲存失敗時回滾 DB，避免留下沒有實體檔案的孤兒筆記
         await notes_repository.delete_note(db, current_user["id"], row["id"])
+        # 原始例外可能夾帶連線字串等內部資訊，只寫 log 不回給瀏覽器
+        print(f"[Notes] 儲存檔案失敗（{notes_storage.backend}）：{exc}")
         raise HTTPException(
             status_code=500,
-            detail=f"伺服器無法儲存檔案（{exc}）。",
+            detail="伺服器無法儲存檔案，請稍後再試。",
         )
 
     return _note_meta(row, annotation_count=0)

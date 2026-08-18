@@ -29,7 +29,54 @@ except ImportError:  # pragma: no cover
     BlobServiceClient = None  # type: ignore[assignment]
 
 
-AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "").strip()
+def _clean_connection_string(raw: str) -> str:
+    """去掉貼上時常見的雜訊：前後空白、換行、整串被引號包住。
+
+    Container Apps 的環境變數常是用複製貼上設定的，帶著引號或換行的值
+    會讓 SDK 直接丟 "Connection string is either blank or malformed."，
+    但錯誤訊息看不出是格式問題還是根本沒設定。
+    """
+    value = raw.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return "".join(value.split())
+
+
+def connection_string_problem(conn_str: str) -> Optional[str]:
+    """檢查連線字串是否具備可用的欄位，有問題就回傳說明。
+
+    只看欄位名稱，不會回傳任何金鑰內容，訊息可以安全寫進 log。
+    """
+    if not conn_str:
+        return "連線字串是空的"
+
+    fields = {}
+    for part in conn_str.split(";"):
+        if not part:
+            continue
+        name, sep, value = part.partition("=")
+        if not sep:
+            return f"欄位 {name!r} 缺少 '='，整串格式不是 Key=Value;Key=Value"
+        fields[name.strip().lower()] = value.strip()
+
+    if fields.get("usedevelopmentstorage") == "true":
+        return None
+    if fields.get("sharedaccesssignature") or "blobendpoint" in fields:
+        return None
+    missing = [
+        key for key in ("accountname", "accountkey") if not fields.get(key)
+    ]
+    if missing:
+        return (
+            "缺少必要欄位：" + "、".join(missing) + "（目前只有 "
+            + "、".join(sorted(fields)) + "）"
+        )
+    return None
+
+
+AZURE_CONNECTION_STRING = _clean_connection_string(
+    os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+)
 NOTES_CONTAINER = os.getenv("AZURE_NOTES_CONTAINER", "").strip() or "notes"
 
 LOCAL_ROOT = Path(
@@ -41,6 +88,7 @@ class LocalFileStorage:
     """本機 / Docker volume。阻塞式 IO 一律丟到執行緒，避免卡住事件迴圈。"""
 
     backend = "local"
+    config_error = None
 
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -84,16 +132,29 @@ class AzureBlobStorage:
     backend = "azure_blob"
 
     def __init__(self, connection_string: str, container: str) -> None:
-        if BlobServiceClient is None:
-            raise RuntimeError(
-                "設定了 AZURE_STORAGE_CONNECTION_STRING，但未安裝 azure-storage-blob"
-            )
         self._connection_string = connection_string
         self._container = container
         self._client: Optional["BlobServiceClient"] = None
         self._lock = asyncio.Lock()
 
+        if BlobServiceClient is None:
+            self.config_error = (
+                "設定了 AZURE_STORAGE_CONNECTION_STRING，但未安裝 azure-storage-blob"
+            )
+        else:
+            problem = connection_string_problem(connection_string)
+            self.config_error = (
+                f"AZURE_STORAGE_CONNECTION_STRING 格式不正確：{problem}"
+                if problem
+                else None
+            )
+        if self.config_error:
+            # 設定壞掉不該讓整個服務起不來，只讓筆記功能失效並在 /api/health 顯示。
+            print(f"[Storage] {self.config_error}")
+
     async def _container_client(self):
+        if self.config_error:
+            raise RuntimeError(self.config_error)
         if self._client is None:
             async with self._lock:
                 if self._client is None:
@@ -126,12 +187,11 @@ class AzureBlobStorage:
             return None
 
     async def healthy(self) -> bool:
-        from azure.core.exceptions import AzureError
-
         try:
             container = await self._container_client()
             return bool(await container.exists())
-        except AzureError:
+        except Exception as exc:  # 設定錯誤丟 ValueError，不能讓 /api/health 一起 500
+            print(f"[Storage] 健康檢查失敗：{exc}")
             return False
 
     async def close(self) -> None:

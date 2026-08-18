@@ -49,9 +49,13 @@ async def health() -> dict:
                 )
                 saved_status = "ready" if tables_ok else "tables_missing"
 
-    storage_status = f"{notes_storage.backend}:" + (
-        "ready" if await notes_storage.healthy() else "unavailable"
-    )
+    if notes_storage.config_error:
+        # 詳細原因只寫進容器 log，健康檢查是公開端點不放設定細節
+        storage_status = f"{notes_storage.backend}:misconfigured"
+    else:
+        storage_status = f"{notes_storage.backend}:" + (
+            "ready" if await notes_storage.healthy() else "unavailable"
+        )
 
     return {
         "status": "ok",
