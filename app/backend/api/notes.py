@@ -1,7 +1,7 @@
 """
 筆記 API — 上傳 PDF / Word 文件，做螢光筆標註與 comment 留言
 ==============================================================
-需 Bearer JWT。檔案存於 backend/uploads/{user_id}/{note_id}.{ext}。
+需 Bearer JWT。檔案本體交由 module/storage.py 儲存（本機為目錄、正式環境為 Blob）。
 
 端點：
   GET    /api/notes                          — 筆記列表
@@ -16,27 +16,22 @@
 """
 
 import json
-import os
-from pathlib import Path
 from typing import Any, List, Optional
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 import asyncpg
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from backend.database.connection import get_db
 from backend.module import notes_repository
 from backend.module.jwt import get_current_user
+from backend.module.storage import note_key, notes_storage
 
 router = APIRouter(prefix="/api", tags=["Notes"])
 
-# 上傳檔存放根目錄。Docker 下的程式碼目錄是唯讀掛載，必須用 NOTES_UPLOAD_DIR
-# 指到可寫的 volume（見 deploy/docker-compose.yml）。本機開發預設為 backend/uploads。
-UPLOAD_ROOT = Path(
-    os.getenv("NOTES_UPLOAD_DIR") or (Path(__file__).resolve().parents[1] / "uploads")
-)
 MAX_BYTES = 25 * 1024 * 1024  # 25 MB
 
 _EXT_TYPE = {"pdf": "pdf", "docx": "docx", "doc": "docx"}
@@ -166,10 +161,6 @@ def _rows_annotation(row: asyncpg.Record) -> Annotation:
     )
 
 
-def _note_path(user_id: UUID, note_id: str, ext: str) -> Path:
-    return UPLOAD_ROOT / str(user_id) / f"{note_id}.{ext}"
-
-
 @router.get("/notes", response_model=List[NoteMeta])
 async def list_notes(
     current_user: asyncpg.Record = Depends(get_current_user),
@@ -203,16 +194,14 @@ async def upload_note(
         db, current_user["id"], title, file_type, ext, len(data)
     )
     note_id = str(row["id"])
-    path = _note_path(current_user["id"], note_id, ext)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
-    except OSError as exc:
-        # 寫檔失敗時回滾 DB，避免留下沒有實體檔案的孤兒筆記
+        await notes_storage.save(note_key(current_user["id"], note_id, ext), data)
+    except Exception as exc:
+        # 儲存失敗時回滾 DB，避免留下沒有實體檔案的孤兒筆記
         await notes_repository.delete_note(db, current_user["id"], row["id"])
         raise HTTPException(
             status_code=500,
-            detail=f"伺服器無法儲存檔案（{exc.strerror or exc}）。請確認 NOTES_UPLOAD_DIR 指向可寫入的目錄。",
+            detail=f"伺服器無法儲存檔案（{exc}）。",
         )
 
     return _note_meta(row, annotation_count=0)
@@ -255,13 +244,15 @@ async def get_note_file(
     if not row:
         raise HTTPException(status_code=404, detail="Note not found")
     ext = row["file_ext"]
-    path = _note_path(current_user["id"], str(note_id), ext)
-    if not path.is_file():
+    data = await notes_storage.load(note_key(current_user["id"], str(note_id), ext))
+    if data is None:
         raise HTTPException(status_code=404, detail="File missing on server")
-    return FileResponse(
-        path,
+    # 標題可能含非 ASCII 字元，用 RFC 5987 格式避免 header 編碼錯誤
+    filename = quote(f"{row['title']}.{ext}")
+    return Response(
+        content=data,
         media_type=_MEDIA_TYPE.get(ext, "application/octet-stream"),
-        filename=f"{row['title']}.{ext}",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
     )
 
 
@@ -274,11 +265,11 @@ async def delete_note(
     row = await notes_repository.get_note(db, current_user["id"], note_id)
     if not row:
         raise HTTPException(status_code=404, detail="Note not found")
-    path = _note_path(current_user["id"], str(note_id), row["file_ext"])
+    key = note_key(current_user["id"], str(note_id), row["file_ext"])
     await notes_repository.delete_note(db, current_user["id"], note_id)
     try:
-        path.unlink(missing_ok=True)
-    except OSError:
+        await notes_storage.delete(key)
+    except Exception:
         pass
 
 

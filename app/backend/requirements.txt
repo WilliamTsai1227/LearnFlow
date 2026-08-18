@@ -10,3 +10,7 @@ python-multipart==0.0.20
 edge-tts>=6.1.0
 # 官方 FSRS 排程器（不要裝 [optimizer] extra，那會拉進 torch 等重相依）
 fsrs>=6.3,<7
+
+# 使用者上傳檔案的雲端儲存（未設定 AZURE_STORAGE_CONNECTION_STRING 時不會被使用）
+azure-storage-blob>=12.19,<13
+aiohttp>=3.9

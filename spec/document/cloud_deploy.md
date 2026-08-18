@@ -40,10 +40,28 @@
 - 網路：限制只允許 Container Apps 的出口存取，不開放公網。
 - Schema 來源：`spec/database/`。
 
-### 2.4 Audio / Image — Blob Storage（LRS）
+### 2.4 Blob Storage（LRS）
 
-- 存放 `script/generate_audio*.py` 產生的語音檔與使用者上傳檔案（目前分別在 `app/frontend/audio/`、`app/backend/uploads/`，兩者都已 gitignore）。
+兩個容器，權限不同 —— 混在一起會讓使用者的私人筆記變成公開檔案：
+
+| 容器 | 存取層級 | 內容 | 路徑 |
+|------|---------|------|------|
+| `media` | **Blob（匿名讀取）** | 課程與單字語音檔（8458 檔 / 142MB）；日後的情境封面圖 | `audio/japanese/...` |
+| `notes` | **私有（無匿名存取）** | 使用者上傳的 PDF / Word 筆記 | `{user_id}/{note_id}.{ext}` |
+
+- **靜態音檔**由瀏覽器直接讀取 `media` 容器，前端以 `js/api-config.js` 的 `learnflowAudioUrl()` 組出網址；本機開發時回退為同網域相對路徑。
+- **使用者筆記**一律經後端 `GET /api/notes/{id}/file` 驗證身分後轉發，**不對外發放 SAS 連結**。後端的儲存切換在 `backend/module/storage.py`：設定 `AZURE_STORAGE_CONNECTION_STRING` 即改用 Blob，未設定則寫入本地目錄。
+- `GET /api/health` 的 `storage` 欄位會回報目前後端（`local:ready` / `azure_blob:ready`）。
 - LRS 為單一區域備援，成本最低。
+
+#### 後續可考慮搬到 Blob 的項目
+
+| 項目 | 現況 | 建議 |
+|------|------|------|
+| 跟讀錄音 | 只存在瀏覽器記憶體，關掉即消失 | 若要做「本週 vs 上週發音比對」才需要落地，私有容器 |
+| 使用者頭像 | 直接引用 Google 的 `avatar_url` | 若開放自訂頭像則需要，公開容器 |
+| TTS 快取 | `tts_cache.audio` 為 PostgreSQL BYTEA | **暫不搬**。它是可重新產生的快取，且已用 `(language, text)` 去重；等資料量真的影響 B1MS 儲存再說 |
+| 學習報告匯出 | 尚未實作 | 產生後放私有容器，給短效 SAS 連結下載 |
 
 ### 2.5 DNS / SSL — Cloudflare（Free）
 
@@ -72,5 +90,5 @@
 1. **前端 API base 需要改**：`app/frontend/js/api-config.js` 在 https 下會解析成 `${origin}/api`，而 SWA 的 `/api` 指向它自己的 Managed Functions，不是我們的 Container Apps。需改為指定 `window.LEARNFLOW_API_BASE` 到後端網址，或使用 SWA 的 linked backend。
 2. **CORS**：後端改為獨立網域後，`main.py` 的 CORS 白名單要加上 SWA 網域與正式網域。
 3. **環境變數 / 密鑰**：`.env` 內容改由 Container Apps secrets 提供，DB 連線字串不進版控。
-4. **音檔搬遷**：前端目前以相對路徑讀 `audio/`，改用 Blob Storage 後需要一個 base URL 設定點。
+4. ~~**音檔搬遷**~~：已完成，見 2.4。
 5. **既有 EC2 部署的去留**：`deploy/DEPLOY_EC2.md` 與 `docker-compose.prod.yml` 是否保留為備援，待決定。

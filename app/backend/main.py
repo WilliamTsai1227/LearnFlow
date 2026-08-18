@@ -25,6 +25,7 @@ from backend.api.vocab import router as vocab_router
 from backend.api.scenarios import router as scenarios_router
 from backend.api.user import router as user_router
 from backend.database.connection import database
+from backend.module.storage import notes_storage
 
 import os
 
@@ -94,6 +95,7 @@ async def on_startup() -> None:
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
     await database.disconnect()
+    await notes_storage.close()
 
 
 if HTML_DIR.is_dir():

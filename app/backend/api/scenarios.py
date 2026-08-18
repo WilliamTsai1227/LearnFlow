@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.database.connection import database
+from backend.module.storage import notes_storage
 from backend.module import scenario_repository
 from backend.module.schemas import (
     CourseDetail,
@@ -48,11 +49,16 @@ async def health() -> dict:
                 )
                 saved_status = "ready" if tables_ok else "tables_missing"
 
+    storage_status = f"{notes_storage.backend}:" + (
+        "ready" if await notes_storage.healthy() else "unavailable"
+    )
+
     return {
         "status": "ok",
         "service": "learnflow",
         "database": db_status,
         "saved": saved_status,
+        "storage": storage_status,
     }
 
 

@@ -134,7 +134,7 @@ function lessonPlayUrl(url) {
     showToast("此句尚未提供語音檔。", { type: "warning" });
     return;
   }
-  lessonAudio.src = `/${url.replace(/^\//, "")}`;
+  lessonAudio.src = learnflowAudioUrl(url);
   lessonAudio.play().catch(() => {
     showToast("語音檔尚未準備好，請稍後再試。", { type: "warning" });
   });
@@ -170,7 +170,7 @@ function runLessonSequence() {
   }
   const url = seq.urls[seq.index];
   if (seq.onUpdate) seq.onUpdate(seq.index);
-  lessonAudio.src = `/${url.replace(/^\//, "")}`;
+  lessonAudio.src = learnflowAudioUrl(url);
   lessonAudio.onended = () => {
     seq.index += 1;
     runLessonSequence();

@@ -376,7 +376,7 @@ function playAudioUrl(url, options = {}) {
     return;
   }
 
-  audioPlayer.src = `/${url.replace(/^\//, "")}`;
+  audioPlayer.src = learnflowAudioUrl(url);
   audioPlayer.play().catch(() => {
     showToast(`${label}語音檔尚未準備好，請稍後再試。`, { type: "warning" });
   });

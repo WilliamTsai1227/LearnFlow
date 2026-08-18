@@ -23,6 +23,7 @@ credentials/
 .DS_Store
 
 # 生成的語音檔（由 script/generate_audio*.py 產生，不進版控）
+# 正式環境改由 Blob Storage 提供，見 api-config.js 的 LEARNFLOW_AUDIO_BASE_CLOUD
 app/frontend/audio/**/*.mp3
 app/frontend/audio/**/*.tmp
 
