@@ -3670,12 +3670,20 @@ button {
 .note-textbox.dragging { cursor: grabbing; }
 .note-textbox.dragging, .note-textbox.resizing { z-index: 12; box-shadow: 0 14px 34px rgba(47,117,237,0.26); }
 /* 滑鼠移入 → 框「外」左上方紅色小垃圾桶（同上傳文件的刪除，不擋到字） */
+/* z-index 壓在縮放控點（3）之下，下方的滑鼠橋接區才不會蓋掉左上角的 rh-nw 控點 */
 .note-textbox-del {
-  position: absolute; top: -32px; left: 0; z-index: 4; display: none; place-items: center;
+  position: absolute; top: -32px; left: 0; z-index: 2;
+  display: grid; place-items: center; visibility: hidden; opacity: 0; transition: opacity 0.12s;
   width: 26px; height: 26px; border: 1px solid var(--line); background: rgba(255,255,255,0.97);
   color: var(--danger); border-radius: 7px; cursor: pointer; box-shadow: 0 2px 8px rgba(23,31,56,0.14);
 }
-.note-textbox:hover .note-textbox-del { display: grid; }
+/* 按鈕底部（-6px）與方框頂端之間有空隙，游標經過時會同時離開兩者、
+   讓 :hover 中斷而按鈕消失。補一塊透明的橋接區把兩者連起來。 */
+.note-textbox-del::before {
+  content: ""; position: absolute; left: 0; right: -6px; top: 100%; height: 8px;
+}
+.note-textbox:hover .note-textbox-del,
+.note-textbox.editing .note-textbox-del { visibility: visible; opacity: 1; }
 .note-textbox-del:hover { border-color: var(--danger); background: #fff; }
 .note-textbox-input {
   width: 100%; height: 100%; box-sizing: border-box; border: none; background: transparent;
