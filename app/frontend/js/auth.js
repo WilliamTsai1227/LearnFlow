@@ -116,7 +116,7 @@ async function tryRefreshToken() {
 async function authFetch(url, options = {}) {
     let token = getAccessToken();
     if (!token) {
-        window.location.href = 'login.html';
+        window.location.href = '/login';
         return;
     }
 
@@ -167,7 +167,7 @@ async function logout() {
         // 離線登出也要能清本地狀態
     }
     localStorage.removeItem('user');
-    window.location.href = 'login.html';
+    window.location.href = '/login';
 }
 
 function formatTierLabel(tierName) {
@@ -226,9 +226,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     const ok = await tryRefreshToken();
     if (!ok) {
         localStorage.removeItem('user');
-        window.location.href = 'login.html';
-        return;
+        window.location.href = '/login';
+        return; // 保持遮蔽狀態直到導向完成，不要讓 app 外框閃出來
     }
+    // 確認登入，解除 index.html 的預繪製遮蔽
+    document.documentElement.classList.remove('auth-pending');
 
     try {
         const res = await authFetch(`${AUTH_API}/user`);

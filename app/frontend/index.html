@@ -4,6 +4,34 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LearnFlow — 情境學習</title>
+    <script>
+      // 未登入者不該先看到 app 外框、再被 auth.js 跳去登入頁（畫面會閃一下）。
+      // localStorage 的 user 是 auth.js 在 refresh 成功後寫的登入快照：
+      // 有快照就樂觀直接顯示；沒有就先遮住畫面，等 auth.js 問到結果再顯示或導向。
+      //
+      // 這裡不能直接導向登入頁：剛從 Google OAuth 導回來時 cookie 已經有了、
+      // 但快照還沒寫入，直接導向會讓人永遠登不進來。
+      (function () {
+        var hasSnapshot = false;
+        try {
+          hasSnapshot = !!localStorage.getItem("user");
+        } catch (e) {
+          // 隱私模式讀不到 localStorage，當作沒有快照處理
+        }
+        if (hasSnapshot) return;
+
+        var root = document.documentElement;
+        root.classList.add("auth-pending");
+        // 萬一 auth.js 沒載入或中途出錯，別讓畫面卡在空白
+        setTimeout(function () {
+          root.classList.remove("auth-pending");
+        }, 5000);
+      })();
+    </script>
+    <style>
+      /* 認證未決前不繪製內容。寫在這裡而不是 styles.css，避免依賴外部檔案的載入順序 */
+      html.auth-pending body { visibility: hidden; }
+    </style>
     <link rel="stylesheet" href="/css/styles.css" />
     <script src="https://unpkg.com/lucide@latest"></script>
   </head>

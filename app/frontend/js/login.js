@@ -14,7 +14,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     if (localStorage.getItem('user')) {
-        window.location.href = 'index.html';
+        window.location.href = '/';
         return;
     }
 
